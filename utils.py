@@ -65,7 +65,7 @@ def create_interactive_fourier_graph(calculate_fourier_series: Callable, func: C
     def respond_to_slider(change):
         max_freq = slider.value
         coeffs, func_approx = calculate_fourier_series(func, max_freq)
-        fig.data[1].y = func_approx(x)
+        fig.data[1].y = np.vectorize(func_approx)(x)
 
     slider.observe(respond_to_slider)
 

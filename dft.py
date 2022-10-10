@@ -1,4 +1,5 @@
 # %%
+from matplotlib.pyplot import step
 import numpy as np
 import utils
 import typing
@@ -85,4 +86,6 @@ def create_fourier_graph(calculate_fourier_series: Callable, func: Callable):
 
 step_func = lambda x: 1 * (x > 0)
 create_fourier_graph(calculate_fourier_series, func = step_func)
+utils.create_interactive_fourier_graph(calculate_fourier_series, func = step_func)
+
 # %%
