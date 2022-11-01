@@ -2,7 +2,7 @@
 import numpy as np
 from fancy_einsum import einsum
 from zmq import HELLO_MSG
-import utils
+import utils_w0d1
 import torch
 from torch import nn
 
@@ -12,7 +12,7 @@ TOTAL_STEPS = 4000
 LEARNING_RATE = 1e-6
 #%%
 import importlib
-importlib.reload(utils)
+importlib.reload(utils_w0d1)
 x = np.linspace(-np.pi, np.pi, 2000)
 y = TARGET_FUNC(x)
 
@@ -43,7 +43,7 @@ for step in range(TOTAL_STEPS): # Callum
     A_n -= LEARNING_RATE * grad_A_n
     B_n -= LEARNING_RATE * grad_B_n
    
-utils.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
+utils_w0d1.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
 # %%
 
 x = torch.linspace(-torch.pi, torch.pi, 2000)
@@ -76,7 +76,7 @@ for step in range(TOTAL_STEPS): # Callum
     A_n -= LEARNING_RATE * grad_A_n
     B_n -= LEARNING_RATE * grad_B_n
 
-utils.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
+utils_w0d1.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
 # %%
 x = torch.linspace(-torch.pi, torch.pi, 2000)
 y = TARGET_FUNC(x)
@@ -108,7 +108,7 @@ for step in range(TOTAL_STEPS):
         A_n.grad = None
         B_n.grad = None
 
-utils.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
+utils_w0d1.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
 # %% [markdown]
 # Models
 # %%
@@ -132,7 +132,7 @@ for step in range(TOTAL_STEPS):
             param -= LEARNING_RATE * param.grad
     model.zero_grad()
 
-utils.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
+utils_w0d1.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
 # %%
 x = torch.linspace(-torch.pi, torch.pi, 2000)
 y = TARGET_FUNC(x) 
@@ -152,5 +152,5 @@ for step in range(TOTAL_STEPS):
     optimizer.step()
     model.zero_grad()
 
-utils.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
+utils_w0d1.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
 # %%

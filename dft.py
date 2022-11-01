@@ -1,12 +1,12 @@
 # %%
 from matplotlib.pyplot import step
 import numpy as np
-import utils
+import utils_w0d1
 import typing
 from typing import Callable
 import ipywidgets as wg
 import importlib
-importlib.reload(utils)
+importlib.reload(utils_w0d1)
 import plotly.express as px
 
 def create_matrix(N, inverse=False):
@@ -21,7 +21,7 @@ def DFT_1d(arr : np.ndarray, inverse: bool = False) -> np.ndarray:
     """
     return np.inner(create_matrix(arr.shape[0], inverse), arr)
 
-utils.test_DFT_func(DFT_1d)
+utils_w0d1.test_DFT_func(DFT_1d)
 # %%
 def test(DFT_1d) -> None:
     F = np.array([20, -4j, 12, 4j])
@@ -42,9 +42,9 @@ def integrate_function(func: Callable, x0: float, x1: float, n_samples: int = 10
     xs = np.arange(x0, x1, step)
     return sum([step * func(x) for x in xs])
 
-utils.test_integrate_function(integrate_function)
+utils_w0d1.test_integrate_function(integrate_function)
 #%% 
-def inner_product(func1: Callable, func2: Callable, x0: float, x1: float):
+def integrate_product(func1: Callable, func2: Callable, x0: float, x1: float):
     """
     Computes the L2 inner product of two functions, between x0 and x1. 
 
@@ -55,7 +55,7 @@ def inner_product(func1: Callable, func2: Callable, x0: float, x1: float):
     f = lambda x: func1(x) * func2(x)
     return integrate_function(f, x0, x1)
 
-utils.test_inner_product(inner_product)
+utils_w0d1.test_integrate_product(integrate_product)
 # %%
 def calculate_fourier_series(func: Callable, max_freq: int = 50):
     """
@@ -68,8 +68,8 @@ def calculate_fourier_series(func: Callable, max_freq: int = 50):
         func_approx is the fourier approximation, as described above
     """
     a_0 = 1/np.pi * integrate_function(func, -np.pi, np.pi)
-    A = [1/np.pi * inner_product(func, lambda x: np.cos(n * x), -np.pi, np.pi) for n in range(1, max_freq + 1)]
-    B = [1/np.pi * inner_product(func, lambda x: np.sin(n * x), -np.pi, np.pi) for n in range(1, max_freq + 1)]
+    A = [1/np.pi * integrate_product(func, lambda x: np.cos(n * x), -np.pi, np.pi) for n in range(1, max_freq + 1)]
+    B = [1/np.pi * integrate_product(func, lambda x: np.sin(n * x), -np.pi, np.pi) for n in range(1, max_freq + 1)]
     func_approx = lambda x: 0.5 * a_0 + sum([A[n - 1] * np.cos(n * x) + B[n - 1] * np.sin(n * x) for n in range(1, max_freq + 1)])
     return ((a_0, A, B), func_approx)
 # %%
@@ -86,6 +86,6 @@ def create_fourier_graph(calculate_fourier_series: Callable, func: Callable):
 
 step_func = lambda x: 1 * (x > 0)
 create_fourier_graph(calculate_fourier_series, func = step_func)
-utils.create_interactive_fourier_graph(calculate_fourier_series, func = step_func)
+utils_w0d1.create_interactive_fourier_graph(calculate_fourier_series, func = step_func)
 
 # %%
