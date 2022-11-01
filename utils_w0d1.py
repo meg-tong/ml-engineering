@@ -30,20 +30,20 @@ def test_integrate_function(integrate_function):
     
     np.testing.assert_allclose(integral_true, integral_approx, atol=1e-10)
 
-def test_inner_product(inner_product):
+def test_integrate_product(integrate_product):
     
     func1 = np.sin
     func2 = np.cos 
     x0 = -np.pi
     x1 = np.pi
     
-    inner_product_approx = inner_product(func1, func2, x0, x1)
-    inner_product_true = 0
-    np.testing.assert_allclose(inner_product_true, inner_product_approx, atol=1e-10)
+    integrate_product_approx = integrate_product(func1, func2, x0, x1)
+    integrate_product_true = 0
+    np.testing.assert_allclose(integrate_product_true, integrate_product_approx, atol=1e-10)
     
-    inner_product_approx = inner_product(func1, func1, x0, x1)
-    inner_product_true = 0.5 * (x1 - x0)
-    np.testing.assert_allclose(inner_product_true, inner_product_approx, atol=1e-10)
+    integrate_product_approx = integrate_product(func1, func1, x0, x1)
+    integrate_product_true = 0.5 * (x1 - x0)
+    np.testing.assert_allclose(integrate_product_true, integrate_product_approx, atol=1e-10)
 
 def create_interactive_fourier_graph(calculate_fourier_series: Callable, func: Callable):
 
@@ -83,7 +83,7 @@ LEARNING_RATE = 1e-6
 def get_title_from_coeffs(a_0, A_n, B_n):
     A_n_coeffs = " + ".join([f"{a_n:.2f}" + r"\cos{" + (str(n) if n>1 else "") + " x}" for (n, a_n) in enumerate(A_n, 1)])
     B_n_coeffs = " + ".join([f"{b_n:.2f}" + r"\sin{" + (str(n) if n>1 else "") + " x}" for (n, b_n) in enumerate(B_n, 1)])
-    return r"$y = " + f"{0.5*a_0:.2f}" + " + " + A_n_coeffs + " + " + B_n_coeffs + "$"
+    return f"{a_0:.2f}" + " + " + A_n_coeffs + " + " + B_n_coeffs + r"$"
 
 def visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list):
 
