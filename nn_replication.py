@@ -1,14 +1,16 @@
-#%% 
-from matplotlib.cbook import flatten
+# %%
 import torch as t
-import importlib
-import utils_w0d2
+import torch.nn as nn
+from einops import repeat
 from fancy_einsum import einsum
 import numpy as np
 import typing
 from typing import Optional
-import torch.nn as nn
 
+import importlib
+import utils_w0d2
+import utils_w0d3
+# %%
 def conv1d_minimal(x: t.Tensor, weights: t.Tensor) -> t.Tensor:
     '''Like torch's conv1d using bias=False and all other keyword arguments left at their default values.
 
@@ -19,8 +21,6 @@ def conv1d_minimal(x: t.Tensor, weights: t.Tensor) -> t.Tensor:
     '''
     out_channels, in_channels, kernel_width = weights.shape
     batch, in_channels, width = x.shape
-    print(f'out_channels: {out_channels}, in_channels: {in_channels}, batch: {batch}, kernel_width: {kernel_width}, width: {width}')
-    print(f'x.stride() {x.stride()}')
     x_exp = x.as_strided(
         size=(batch, in_channels, kernel_width, width - kernel_width + 1),
         stride=(x.stride()[0], x.stride()[1], x.stride()[-1], x.stride()[-1])
@@ -40,8 +40,6 @@ def conv2d_minimal(x: t.Tensor, weights: t.Tensor) -> t.Tensor:
     '''
     out_channels, in_channels, kernel_height, kernel_width = weights.shape
     batch, in_channels, height, width = x.shape
-    #print(f'out_channels: {out_channels}, in_channels: {in_channels}, batch: {batch}, kernel_width: {kernel_width}, width: {width}')
-    print(f'x.stride() {x.stride()}')
     x_exp = x.as_strided(
         size=(batch, in_channels, kernel_height, height - kernel_height + 1, kernel_width, width - kernel_width + 1),
         stride=(x.stride()[0], x.stride()[1], x.stride()[2], x.stride()[2], x.stride()[3], x.stride()[3])
@@ -159,9 +157,7 @@ def maxpool2d(x: t.Tensor, kernel_size: IntOrPair, stride: Optional[IntOrPair] =
         size=(batch, in_channels, kernel_height, new_height, kernel_width, new_width),
         stride=(x_padded.stride()[0], x_padded.stride()[1], x_padded.stride()[2], x_padded.stride()[2] * stride[0], x_padded.stride()[3], x_padded.stride()[3] * stride[1])
     )
-    print('x_exp.shape', x_exp.shape)
     return t.amax(x_exp, dim=(2, 4))
-
 
 utils_w0d2.test_maxpool2d(maxpool2d)
 # %%
@@ -182,7 +178,6 @@ class MaxPool2d(nn.Module):
 
 utils_w0d2.test_maxpool2d_module(MaxPool2d)
 m = MaxPool2d(kernel_size=3, stride=2, padding=1)
-print(f"Manually verify that this is an informative repr: {m}")
 # %%
 class ReLU(nn.Module):
     def forward(self, x: t.Tensor) -> t.Tensor:
@@ -240,9 +235,7 @@ utils_w0d2.test_linear_parameters(Linear)
 utils_w0d2.test_linear_no_bias(Linear)
 # %%
 class Conv2d(nn.Module):
-    def __init__(
-        self, in_channels: int, out_channels: int, kernel_size: IntOrPair, stride: IntOrPair = 1, padding: IntOrPair = 0
-    ):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: IntOrPair, stride: IntOrPair = 1, padding: IntOrPair = 0):
         '''
         Same as torch.nn.Conv2d with bias=False.
 
@@ -255,7 +248,8 @@ class Conv2d(nn.Module):
         self.stride = stride
         self.padding = padding
 
-        self.weight = nn.Parameter((t.rand((self.out_channels, self.in_channels, self.kernel_size[0], self.kernel_size[1])) * 2 - 1) / np.sqrt(self.in_channels))
+        scaling_factor = 1 / np.sqrt(self.in_channels * self.kernel_size[0] * self.kernel_size[1])
+        self.weight = nn.Parameter((t.rand((self.out_channels, self.in_channels, self.kernel_size[0], self.kernel_size[1])) * 2 - 1) * scaling_factor)
 
     def forward(self, x: t.Tensor) -> t.Tensor:
         '''Apply the functional conv2d you wrote earlier.'''
@@ -265,4 +259,73 @@ class Conv2d(nn.Module):
         return f"weight {self.weight}"
 
 utils_w0d2.test_conv2d_module(Conv2d)
+# %%
+class BatchNorm2d(nn.Module):
+    running_mean: t.Tensor         # shape: (num_features,)
+    running_var: t.Tensor          # shape: (num_features,)
+    num_batches_tracked: t.Tensor  # shape: ()
+
+    def __init__(self, num_features: int, eps=1e-05, momentum=0.1):
+        '''Like nn.BatchNorm2d with track_running_stats=True and affine=True.
+
+        Name the learnable affine parameters `weight` and `bias` in that order.
+        '''
+        super().__init__()
+        self.num_features = num_features
+        self.weight = nn.Parameter(
+            t.ones(num_features)
+        )
+        self.bias = nn.Parameter(
+            t.zeros(num_features)
+        )
+        self.register_buffer('running_mean', t.zeros(num_features))
+        self.register_buffer('running_var', t.ones(num_features))
+        self.momentum = momentum
+        self.eps = eps
+        self.register_buffer('num_batches_tracked', t.tensor(0))
+
+
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        '''Normalize each channel.
+
+        Compute the variance using `torch.var(x, unbiased=False)`
+        Hint: you may also find it helpful to use the argument `keepdim`.
+
+        x: shape (batch, channels, height, width)
+        Return: shape (batch, channels, height, width)
+        '''
+        batches, colours, height, width = x.shape
+        x_mean = x.mean(dim=[0, 2, 3])
+        x_var = x.var(dim=[0, 2, 3])
+        expander = lambda v: repeat(v, 'c -> b c h w', b=batches, h=height, w=width)
+        if self.training:
+            self.running_mean = self.momentum * x_mean + (1 - self.momentum) * self.running_mean if self.training else self.running_mean
+            self.running_var = self.momentum * x_var + (1 - self.momentum) * self.running_var if self.training else self.running_mean
+            x_mean = expander(x_mean)
+            x_var = expander(x_var)
+            self.num_batches_tracked += 1
+        else:
+            x_mean = expander(self.running_mean)
+            x_var = expander(self.running_var)
+        w = expander(self.weight)
+        b = expander(self.bias)
+        x_scaled = (x - x_mean) / t.sqrt(x_var + self.eps)
+        y = x_scaled * w + b
+        return y
+
+    def extra_repr(self) -> str:
+        return f'weight={self.weight} bias={self.bias} mu={self.running_mean} var={self.running_var}'
+
+utils_w0d3.test_batchnorm2d_module(BatchNorm2d)
+utils_w0d3.test_batchnorm2d_forward(BatchNorm2d)
+utils_w0d3.test_batchnorm2d_running_mean(BatchNorm2d)
+
+# %%
+class AveragePool(nn.Module):
+    def forward(self, x: t.Tensor) -> t.Tensor:
+        '''
+        x: shape (batch, channels, height, width)
+        Return: shape (batch, channels)
+        '''
+        return x.mean(dim=[2, 3])
 # %%
