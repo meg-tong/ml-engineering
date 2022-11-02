@@ -1,7 +1,6 @@
 #%%
 import numpy as np
 from fancy_einsum import einsum
-from zmq import HELLO_MSG
 import utils_w0d1
 import torch
 from torch import nn
@@ -11,8 +10,6 @@ TARGET_FUNC = lambda x: 1 * (x > 1)
 TOTAL_STEPS = 4000
 LEARNING_RATE = 1e-6
 #%%
-import importlib
-importlib.reload(utils_w0d1)
 x = np.linspace(-np.pi, np.pi, 2000)
 y = TARGET_FUNC(x)
 
@@ -26,7 +23,7 @@ B_n = np.random.randn(NUM_FREQUENCIES)
 y_pred_list = []
 coeffs_list = []
 
-for step in range(TOTAL_STEPS): # Callum
+for step in range(TOTAL_STEPS):
     y_pred = 0.5 * a_0 + einsum('freq x, freq -> x', x_cos, A_n) + einsum('freq x, freq -> x', x_sin, B_n)
     loss = np.square(y - y_pred).sum()
     if step % 100 == 0:
@@ -59,7 +56,7 @@ B_n = torch.randn((NUM_FREQUENCIES), dtype=torch.float)
 y_pred_list = []
 coeffs_list = []
 
-for step in range(TOTAL_STEPS): # Callum
+for step in range(TOTAL_STEPS):
     y_pred = 0.5 * a_0 + einsum('freq x, freq -> x', x_cos, A_n) + einsum('freq x, freq -> x', x_sin, B_n)
     loss = torch.square(y - y_pred).sum()
     if step % 100 == 0:
