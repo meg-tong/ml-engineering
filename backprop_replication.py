@@ -493,8 +493,8 @@ def backward(self, end_grad: Union[Arr, "Tensor", None] = None) -> None:
     return backprop(self, end_grad)
 
 
-
-def backprop(end_node: Tensor, end_grad: Optional[Tensor] = None) -> None:
+# %%
+def cal_backprop(end_node: Tensor, end_grad: Optional[Tensor] = None) -> None:
     '''Accumulates gradients in the grad field of each leaf node.
 
     tensor.backward() is equivalent to backprop(tensor).
@@ -546,6 +546,45 @@ def backprop(end_node: Tensor, end_grad: Optional[Tensor] = None) -> None:
                 grads[parent] = in_grad
             else:
                 grads[parent] += in_grad
+
+def backprop(end_node: Tensor, end_grad: Optional[Tensor] = None) -> None:
+    '''Accumulates gradients in the grad field of each leaf node.
+
+    tensor.backward() is equivalent to backprop(tensor).
+
+    end_node: 
+        The rightmost node in the computation graph. 
+        If it contains more than one element, end_grad must be provided.
+    end_grad: 
+        A tensor of the same shape as end_node. 
+        If not specified, this is set to an array of 1s with same shape as end_node.array.
+    '''
+    # Get value of end_grad_arr
+    end_grad_arr = np.ones_like(end_node.array) if end_grad is None else end_grad.array
+
+    # Create dict to store gradients
+    grads: dict[Tensor, Arr] = {end_node: end_grad_arr}
+
+    comp_graph = sorted_computational_graph(end_node)
+    for node in comp_graph:
+        if not node.requires_grad:
+            continue
+        if node.is_leaf:
+            node.grad = Tensor(grads[node], requires_grad=False)
+            continue
+
+        for index, parent in node.recipe.parents.items():
+            back_func = BACK_FUNCS.get_back_func(node.recipe.func, index)
+            grad = back_func(grads[node], node.array, *node.recipe.args, **node.recipe.kwargs)
+            if parent in grads.keys():
+                grads[parent] += grad
+            else:
+                grads[parent] = grad
+
+utils_w0d5.test_backprop(Tensor)
+utils_w0d5.test_backprop_branching(Tensor)
+utils_w0d5.test_backprop_requires_grad_false(Tensor)
+utils_w0d5.test_backprop_float_arg(Tensor)
 
 # %%
 def _argmax(x: Arr, dim=None, keepdim=False):
@@ -1012,14 +1051,13 @@ class MLP(Module):
         self.linear1 = Linear(28 * 28, 64)
         self.linear2 = Linear(64, 64)
         self.output = Linear(64, 10)
-        #self.new_linear = Linear(28 * 28, 10)
 
     def forward(self, x):
         x = x.reshape((x.shape[0], 28 * 28))
         x = relu(self.linear1(x))
         x = relu(self.linear2(x))
         x = self.output(x)
-        return x#self.new_linear(x)
+        return x
 # %%
 def cross_entropy(logits: Tensor, true_labels: Tensor) -> Tensor:
     '''Like torch.nn.functional.cross_entropy with reduction='none'.
@@ -1112,7 +1150,7 @@ def test(model, test_loader):
 num_epochs = 5
 model = MLP()
 start = time.time()
-optimizer = SGD(model.parameters(), 0.01)
+optimizer = SGD(model.parameters(), 0.1)
 for epoch in range(num_epochs):
     train(model, train_loader, optimizer, epoch)
     test(model, test_loader)

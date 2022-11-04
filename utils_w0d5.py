@@ -277,6 +277,48 @@ def test_topological_sort_cyclic(topological_sort):
         assert False
     print("All tests in `test_topological_sort_cyclic` passed!")
 
+def test_backprop(Tensor):
+    a = Tensor([np.e, np.e**np.e], requires_grad=True)
+    b = a.log()
+    c = b.log()
+    c.backward(end_grad=np.array([1.0, 1.0]))
+    assert c.grad is None
+    assert b.grad is None
+    assert a.grad is not None
+    assert np.allclose(a.grad.array, 1 / b.array / a.array)
+    print("All tests in `test_backprop` passed!")
+
+def test_backprop_branching(Tensor):
+    a = Tensor([1, 2, 3], requires_grad=True)
+    b = Tensor([1, 2, 3], requires_grad=True)
+    c = a * b
+    c.backward(end_grad=np.array([1.0, 1.0, 1.0]))
+    assert np.allclose(a.grad.array, b.array)
+    assert np.allclose(b.grad.array, a.array)
+    print("All tests in `test_backprop_branching` passed!")
+
+def test_backprop_requires_grad_false(Tensor):
+    a = Tensor([1, 2, 3], requires_grad=True)
+    b = Tensor([1, 2, 3], requires_grad=False)
+    c = a * b
+    c.backward(end_grad=np.array([1.0, 1.0, 1.0]))
+    assert np.allclose(a.grad.array, b.array)
+    assert b.grad is None
+    print("All tests in `test_backprop_requires_grad_false` passed!")
+
+def test_backprop_float_arg(Tensor):
+    a = Tensor([1, 2, 3], requires_grad=True)
+    b = 2
+    c = a * b
+    d = 2
+    e = d * c
+    e.backward(end_grad=np.array([1.0, 1.0, 1.0]))
+    assert e.grad is None
+    assert c.grad is None
+    assert a.grad is not None
+    assert np.allclose(a.grad.array, np.array([4.0, 4.0, 4.0]))
+    print("All tests in `test_backprop_float_arg` passed!")
+
 def test_negative_back(Tensor):
     a = Tensor([-1, 0, 1], requires_grad=True)
     b = -a
