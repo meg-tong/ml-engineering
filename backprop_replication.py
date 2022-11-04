@@ -4,9 +4,12 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Iterator, Optional, Protocol, Union, Tuple
 from einops import repeat
 import utils_w0d5
+import time
+import re
+import utils_w0d2
 import numpy as np
 from typing import List, Dict, Optional
-
+global count
 Arr = np.ndarray
 grad_tracking_enabled = True
 
@@ -61,9 +64,6 @@ def unbroadcast_vec(broadcasted: Arr, original: Arr) -> Arr:
     sum_drop_dims = [-i for i in range(1, len(broadcasted.shape) + 1) if i > len(original.shape)]
     unbroadcasted = broadcasted.sum(axis=tuple(sum_keep_dims), keepdims=True)
     unbroadcasted = unbroadcasted.sum(axis=tuple(sum_drop_dims), keepdims=False)
-    # print(f'shape_diff = {original.shape != broadcasted.shape[-len(original.shape):]}')
-    # print(f'sum_keep_dims={sum_keep_dims}, sum_drop_dims={sum_drop_dims}')
-    # print(f'broadcasted.shape={broadcasted.shape}, original.shape={original.shape}, unbroadcasted.shape={unbroadcasted.shape}')
     return unbroadcasted
             
 
@@ -355,25 +355,25 @@ def wrap_forward_fn(numpy_func: Callable, is_differentiable=True) -> Callable:
     is_differentiable: if True, numpy_func is differentiable with respect to some input argument, so we may need to track information in a Recipe. If False, we definitely don't need to track information.
     Return: function. It has the same signature as numpy_func, except wherever there was a NumPy array, this has a Tensor instead.
     '''
-   
+
     def tensor_func(*args: Any, **kwargs: Any) -> Tensor:
         requires_grad = is_differentiable and any([
             isinstance(a, Tensor) and a.requires_grad for a in args
         ])
         parents = {i: a for i, a in enumerate(args) if isinstance(a, Tensor)}
         array_args = tuple([a.array if isinstance(a, Tensor) else a for a in args])
-        recipe = Recipe(numpy_func, array_args, {}, parents)
+        recipe = Recipe(numpy_func, array_args, kwargs, parents)
         y = Tensor(numpy_func(*array_args, **kwargs), requires_grad)
         if requires_grad:
             y.recipe = recipe
         return y
 
     return tensor_func
-
+"""
 def test_sum(wrap_forward_fn, Tensor):
     # This tests keyword arguments
     def _sum(x: Arr, dim=None, keepdim=False) -> Arr:
-        """Like torch.sum, calling np.sum internally."""
+        #Like torch.sum, calling np.sum internally.
         return np.sum(x, axis=dim, keepdims=keepdim)
     global sum
     sum = wrap_forward_fn(_sum)
@@ -381,7 +381,7 @@ def test_sum(wrap_forward_fn, Tensor):
     assert a.sum(0).shape == (2,)
     assert a.sum(0, True).shape == (1, 2)
     print("All tests in `test_sum` passed!")
-
+"""
 importlib.reload(utils_w0d5)
 log = wrap_forward_fn(np.log)
 multiply = wrap_forward_fn(np.multiply)
@@ -390,7 +390,7 @@ utils_w0d5.test_log_no_grad(Tensor, log)
 utils_w0d5.test_multiply(Tensor, multiply)
 utils_w0d5.test_multiply_no_grad(Tensor, multiply)
 utils_w0d5.test_multiply_float(Tensor, multiply)
-test_sum(wrap_forward_fn, Tensor)
+#test_sum(wrap_forward_fn, Tensor)
 try:
     log(x=Tensor([100]))
 except Exception as e:
@@ -492,6 +492,8 @@ def backward(self, end_grad: Union[Arr, "Tensor", None] = None) -> None:
         end_grad = Tensor(end_grad)
     return backprop(self, end_grad)
 
+
+
 def backprop(end_node: Tensor, end_grad: Optional[Tensor] = None) -> None:
     '''Accumulates gradients in the grad field of each leaf node.
 
@@ -535,7 +537,6 @@ def backprop(end_node: Tensor, end_grad: Optional[Tensor] = None) -> None:
             # Get the backward function corresponding to the function that created this node,
             # and the arg posn of this particular parent within that function 
             back_fn = BACK_FUNCS.get_back_func(node.recipe.func, argnum)
-
             # Use this backward function to calculate the gradient
             in_grad = back_fn(outgrad, node.array, *node.recipe.args, **node.recipe.kwargs)
 
@@ -586,10 +587,15 @@ BACK_FUNCS.add_back_func(np.reshape, 0, reshape_back)
 utils_w0d5.test_reshape_back(Tensor)
 
 # %%
+def mlab_permute_back(grad_out: Arr, out: Arr, x: Arr, axes: tuple) -> Arr:
+    "SOLUTION"
+    inverse = np.argsort(axes)
+    return np.transpose(grad_out, inverse)
+
 def permute_back(grad_out: Arr, out: Arr, x: Arr, axes: tuple) -> Arr:
     return np.transpose(grad_out, [axes[i] for i in axes])
 
-BACK_FUNCS.add_back_func(np.transpose, 0, permute_back)
+BACK_FUNCS.add_back_func(np.transpose, 0, mlab_permute_back)
 permute = wrap_forward_fn(np.transpose)
 
 utils_w0d5.test_permute_back(Tensor)
@@ -613,9 +619,47 @@ utils_w0d5.test_expand(Tensor)
 utils_w0d5.test_expand_negative_length(Tensor)
 
 # %%
-def sum_back(grad_out: Arr, out: Arr, x: Arr, dim=None, keepdim=False):
+def my_sum_back(grad_out: Arr, out: Arr, x: Arr, dim=None, keepdim=False):
     '''Basic idea: repeat grad_out over the dims along which x was summed'''
     # TODO need to use np.expand_dims if keepdim=False
+    return np.broadcast_to(grad_out, x.shape)
+importlib.reload(utils_w0d5)
+
+def mlab_coerce_dim(x, dim: Union[None, int, Tuple[int]]) -> Tuple[int]:
+        if dim is None:
+            return tuple(range(x.ndim))
+        elif isinstance(dim, int):
+            return tuple([dim])
+        return dim
+
+def mlab_sum_back(grad_out: Arr, out: Arr, x: Arr, dim=None, keepdim=False):
+    #print("dim", dim)
+    #print("keepdim", keepdim)
+    dim = mlab_coerce_dim(x, dim)
+    if not keepdim:
+        # Forward squeezed out the 1-size dims, re-insert them.
+        unsqueezed = tuple([1 if d in dim else size for d, size in enumerate(x.shape)])
+        grad_out = grad_out.reshape(unsqueezed)
+    return np.broadcast_to(grad_out, x.shape)
+
+def cal_sum_back(grad_out: Arr, out: Arr, x: Arr, dim=None, keepdim=False):
+    """Basic idea: repeat grad_out over the dims along which x was summed"""
+    #print("dim", dim)
+    #print("keepdim", keepdim)
+
+    # If grad_out is a scalar, we need to make it a tensor (so we can expand it later)
+    #if not isinstance(grad_out, Arr):
+    #    grad_out = Tensor(grad_out)
+    
+    # If dim=None, this means we summed over all axes, and we want to repeat back to input shape
+    if dim is None:
+        dim = list(range(x.ndim))
+        
+    # If keepdim=False, then we need to add back in dims, so grad_out and x have same number of dims
+    if keepdim == False:
+        grad_out = np.expand_dims(grad_out, dim)
+    
+    # Finally, we repeat grad_out along the dims over which x was summed
     return np.broadcast_to(grad_out, x.shape)
 
 def _sum(x: Arr, dim=None, keepdim=False) -> Arr:
@@ -623,7 +667,7 @@ def _sum(x: Arr, dim=None, keepdim=False) -> Arr:
     return np.sum(x, axis=dim, keepdims=keepdim)
 
 sum = wrap_forward_fn(_sum)
-BACK_FUNCS.add_back_func(_sum, 0, sum_back)
+BACK_FUNCS.add_back_func(_sum, 0, cal_sum_back)
 
 utils_w0d5.test_sum_keepdim_false(Tensor)
 utils_w0d5.test_sum_keepdim_true(Tensor)
@@ -631,27 +675,89 @@ utils_w0d5.test_sum_dim_none(Tensor)
 # %% Indexing
 Index = Union[int, Tuple[int, ...], Tuple[Arr], Tuple[Tensor]]
 
-def coerce_index(index: Index):
+def _my_coerce_index(index: Index):
     if isinstance(index, tuple):
         return tuple(i.array if isinstance(i, Tensor) else i for i in index)
     return index
 
-def _getitem(x: Arr, index: Index) -> Arr:
+def _my_getitem(x: Arr, index: Index) -> Arr:
     '''Like x[index] when x is a torch.Tensor.'''
-    return x[coerce_index(index)]
+    return x[_my_coerce_index(index)]
 
-def getitem_back(grad_out: Arr, out: Arr, x: Arr, index: Index):
+def _my_getitem_back(grad_out: Arr, out: Arr, x: Arr, index: Index):
     '''Backwards function for _getitem.
 
     Hint: use np.add.at(a, indices, b)
     This function works just like a[indices] += b, except that it allows for repeated indices.
     '''
     x_copy = np.zeros_like(x)
-    np.add.at(x_copy, coerce_index(index), grad_out)
+    np.add.at(x_copy, _my_coerce_index(index), grad_out)
     return x_copy
 
-getitem = wrap_forward_fn(_getitem)
-BACK_FUNCS.add_back_func(_getitem, 0, getitem_back)
+def _mlab_coerce_index(item: Union[int, Arr, Tensor]) -> Union[int, Arr]:
+    if isinstance(item, Arr):
+        return item
+    if isinstance(item, Tensor):
+        return item.array
+    return item
+
+# TBD: something like Union[int, Arr, Tensor, list, Tuple[Union[int, Arr, Tensor, list], ...]]
+# Or maybe we can use sequence protocol. Write tests for all cases
+Index = Union[int, Tuple[int, ...], Tuple[Arr], Tuple[Tensor]]
+
+def _mlab_getitem(x: Arr, index: Index) -> Arr:
+    """Like x[index] when x is a torch.Tensor."""
+    if isinstance(index, int):
+        return x[index]
+    else:
+        unboxed = tuple([_mlab_coerce_index(item) for item in index])
+        return x[unboxed]
+
+
+def _mlab_getitem_back(grad_out: Arr, out: Arr, x: Arr, index: Index):
+    """Backwards function for _getitem.
+
+    Hint: use np.add.at(a, indices, b)
+    """
+    out = np.zeros_like(x)
+    if isinstance(index, int):
+        np.add.at(out, index, grad_out)
+    else:
+        unboxed = tuple([_mlab_coerce_index(item) for item in index])
+        print("out.shape", out.shape)
+        print("len(unboxed)", len(unboxed))
+        print("type(unboxed)[0]", type(unboxed[0]))
+        print("type(unboxed)", type(unboxed))
+        print(type(grad_out), grad_out.shape)
+
+        np.add.at(out, unboxed, grad_out)  # type: ignore
+    print(out)
+    return out  
+
+def _cal_coerce_index(index: Index) -> Union[int, Tuple[int, ...], Tuple[Arr]]:
+    """
+    If index is of type signature `tuple[Tensor]`, converts it to `tuple[Arr]`.
+    """
+    if isinstance(index, tuple) and set(map(type, index)) == {Tensor}:
+        return tuple([i.array for i in index])
+    else:
+        return index
+
+def _cal_getitem(x: Arr, index: Index) -> Arr:
+    """Like x[index] when x is a torch.Tensor."""
+    return x[_cal_coerce_index(index)]
+
+def _cal_getitem_back(grad_out: Arr, out: Arr, x: Arr, index: Index):
+    """Backwards function for _getitem.
+    Hint: use np.add.at(a, indices, b)
+    This function works just like a[indices] += b, except that it allows for repeated indices.
+    """
+    new_grad_out = np.full_like(x, 0)
+    np.add.at(new_grad_out, _cal_coerce_index(index), grad_out)
+    return new_grad_out
+
+getitem = wrap_forward_fn(_my_getitem)
+BACK_FUNCS.add_back_func(_my_getitem, 0, _my_getitem_back)
 
 utils_w0d5.test_getitem_int(Tensor)
 utils_w0d5.test_getitem_tuple(Tensor)
@@ -757,4 +863,261 @@ BACK_FUNCS.add_back_func(_matmul2d, 0, matmul2d_back0)
 BACK_FUNCS.add_back_func(_matmul2d, 1, matmul2d_back1)
 
 utils_w0d5.test_matmul2d(Tensor)
+# %%
+class Parameter(Tensor):
+    def __init__(self, tensor: Tensor, requires_grad=True):
+        '''Share the array with the provided tensor.'''
+        self.array = tensor.array
+        self.recipe = tensor.recipe
+        self.requires_grad = True
+
+    def __repr__(self):
+        return f"Parameter containing:\n{super().__repr__()}"
+
+x = Tensor([1.0, 2.0, 3.0])
+p = Parameter(x)
+assert p.requires_grad
+assert p.array is x.array
+assert repr(p) == "Parameter containing:\nTensor(array([1., 2., 3.]), requires_grad=True)"
+x.add_(Tensor(np.array(2.0)))
+assert np.allclose(
+    p.array, np.array([3.0, 4.0, 5.0])
+), "in-place modifications to the original tensor should affect the parameter"
+# %%
+class Module:
+    _modules: Dict[str, "Module"]
+    _parameters: Dict[str, Parameter]
+
+    def __init__(self):
+        self._modules = {}
+        self._parameters = {}
+
+    def modules(self):
+        '''Return the direct child modules of this module.'''
+        return self.__dict__["_modules"].values()
+
+    def parameters(self, recurse: bool = True) -> Iterator[Parameter]:
+        '''Return an iterator over Module parameters.
+
+        recurse: if True, the iterator includes parameters of submodules, recursively.
+        '''
+        l = list(self._parameters.values())
+        if not recurse:
+            return iter(l)
+        for module in self.modules():
+            l.extend(module.parameters())
+        return iter(l)
+
+    def __setattr__(self, key: str, val: Any) -> None:
+        '''
+        If val is a Parameter or Module, store it in the appropriate _parameters or _modules dict.
+        Otherwise, call the superclass.
+        '''
+        if isinstance(val, Parameter):
+            self.__dict__["_parameters"][key] = val
+            return
+        if isinstance(val, Module):
+            self.__dict__["_modules"][key] = val
+            return
+        super().__setattr__(key, val)
+
+
+    def __getattr__(self, key: str) -> Union[Parameter, "Module"]:
+        '''
+        If key is in _parameters or _modules, return the corresponding value.
+        Otherwise, raise KeyError.
+        '''
+        if key in self._modules.keys():
+            return self._modules[key]
+        if key in self._parameters.keys():
+            return self._parameters[key]
+        raise KeyError()
+
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
+    def forward(self):
+        raise NotImplementedError("Subclasses must implement forward!")
+
+    def __repr__(self):
+        def _indent(s_, numSpaces):
+            return re.sub("\n", "\n" + (" " * numSpaces), s_)
+        lines = [f"({key}): {_indent(repr(module), 2)}" for key, module in self._modules.items()]
+        return "".join([
+            self.__class__.__name__ + "(",
+            "\n  " + "\n  ".join(lines) + "\n" if lines else "", ")"
+        ])
+
+
+class TestInnerModule(Module):
+    def __init__(self):
+        super().__init__()
+        self.param1 = Parameter(Tensor([1.0]))
+        self.param2 = Parameter(Tensor([2.0]))
+
+class TestModule(Module):
+    def __init__(self):
+        super().__init__()
+        self.inner = TestInnerModule()
+        self.param3 = Parameter(Tensor([3.0]))
+
+mod = TestModule()
+assert list(mod.modules()) == [mod.inner]
+assert list(mod.parameters()) == [
+    mod.param3,
+    mod.inner.param1,
+    mod.inner.param2,
+], "parameters should come before submodule parameters"
+print("Manually verify that the repr looks reasonable:")
+print(mod)
+# %%
+class Linear(Module):
+    weight: Parameter
+    bias: Optional[Parameter]
+
+    def __init__(self, in_features: int, out_features: int, bias=True):
+        '''A simple linear (technically, affine) transformation.
+
+        The fields should be named `weight` and `bias` for compatibility with PyTorch.
+        If `bias` is False, set `self.bias` to None.
+        '''
+        
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+
+        self.weight = Parameter(Tensor((np.random.rand(self.out_features, self.in_features) * 2 - 1) / np.sqrt(self.in_features)))
+        self.bias = Parameter(Tensor((np.random.rand(self.out_features) * 2 - 1) / np.sqrt(self.in_features))) if bias else None
+
+    def forward(self, x: Tensor) -> Tensor:
+        '''
+        x: shape (*, in_features)
+        Return: shape (*, out_features)
+        '''
+        wt = self.weight.permute((1, 0))
+        x = x @ wt
+        x = x + (self.bias if self.bias is not None else 0)
+        return x
+
+    def extra_repr(self) -> str:
+        pass
+
+utils_w0d2.test_linear_forward(Linear)
+#utils_w0d2.test_linear_parameters(Linear)
+utils_w0d2.test_linear_no_bias(Linear)
+# %%
+class MLP(Module):
+    def __init__(self):
+        super().__init__()
+        self.linear1 = Linear(28 * 28, 64)
+        self.linear2 = Linear(64, 64)
+        self.output = Linear(64, 10)
+        #self.new_linear = Linear(28 * 28, 10)
+
+    def forward(self, x):
+        x = x.reshape((x.shape[0], 28 * 28))
+        x = relu(self.linear1(x))
+        x = relu(self.linear2(x))
+        x = self.output(x)
+        return x#self.new_linear(x)
+# %%
+def cross_entropy(logits: Tensor, true_labels: Tensor) -> Tensor:
+    '''Like torch.nn.functional.cross_entropy with reduction='none'.
+
+    logits: shape (batch, classes)
+    true_labels: shape (batch,). Each element is the index of the correct label in the logits.
+
+    Return: shape (batch, ) containing the per-example loss.
+    '''
+    true_logits = logits[np.arange(0, logits.shape[0]), true_labels] # Our getitem function is getting called here, but we don't have an implementation for :
+    probs = exp(true_logits) / exp(logits).sum(1)
+    return -log(probs)
+
+utils_w0d5.test_cross_entropy(Tensor, cross_entropy)
+# %%
+class NoGrad:
+    '''Context manager that disables grad inside the block. Like torch.no_grad.'''
+
+    was_enabled: bool
+
+    def __enter__(self):
+        "SOLUTION"
+        global grad_tracking_enabled
+        self.was_enabled = grad_tracking_enabled
+        grad_tracking_enabled = False
+
+    def __exit__(self, type, value, traceback):
+        "SOLUTION"
+        global grad_tracking_enabled
+        grad_tracking_enabled = self.was_enabled
+# %%
+(train_loader, test_loader) = utils_w0d5.get_mnist(20)
+utils_w0d5.visualize(train_loader)
+
+class SGD:
+    def __init__(self, params: Iterable[Parameter], lr: float):
+        '''Vanilla SGD with no additional features.'''
+        self.params = list(params)
+        self.lr = lr
+        self.b = [None for _ in self.params]
+
+    def zero_grad(self) -> None:
+        for p in self.params:
+            p.grad = None
+
+    def step(self) -> None:
+        with NoGrad():
+            for (i, p) in enumerate(self.params):
+                assert isinstance(p.grad, Tensor)
+                p.add_(p.grad, -self.lr)
+
+
+def train(model, train_loader, optimizer, epoch):
+    for (batch_idx, (data, target)) in enumerate(train_loader):
+        data = Tensor(data.numpy())
+        target = Tensor(target.numpy())
+        optimizer.zero_grad()
+        output = model(data)
+        loss = cross_entropy(output, target).sum() / len(output)
+        loss.backward()
+        optimizer.step()
+        if batch_idx % 50 == 0:
+            print(
+                "Train Epoch: {} [{}/{} ({:.0f}%)]	Loss: {:.6f}".format(
+                    epoch,
+                    batch_idx * len(data),
+                    len(train_loader.dataset),
+                    100.0 * batch_idx / len(train_loader),
+                    loss.item(),
+                )
+            )
+
+
+def test(model, test_loader):
+    test_loss = 0
+    correct = 0
+    with NoGrad():
+        for (data, target) in test_loader:
+            data = Tensor(data.numpy())
+            target = Tensor(target.numpy())
+            output = model(data)
+            test_loss += cross_entropy(output, target).sum().item()
+            pred = output.argmax(dim=1, keepdim=True)
+            correct += (pred == target.reshape(pred.shape)).sum().item()
+    test_loss /= len(test_loader.dataset)
+    print("Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)".format(test_loss, correct, len(test_loader.dataset), 100.0 * correct / len(test_loader.dataset)))
+# %%
+
+
+num_epochs = 5
+model = MLP()
+start = time.time()
+optimizer = SGD(model.parameters(), 0.01)
+for epoch in range(num_epochs):
+    train(model, train_loader, optimizer, epoch)
+    test(model, test_loader)
+    optimizer.step()
+print(f"Completed in {time.time() - start: .2f}s")
+
+
 # %%
