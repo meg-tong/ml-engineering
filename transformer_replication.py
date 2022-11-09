@@ -21,11 +21,12 @@ import time
 import wandb
 # %%
 tokenizer = transformers.AutoTokenizer.from_pretrained("gpt2")
-print(tokenizer("hello meg"))
-print(tokenizer.encode("hello meg"))
-print(tokenizer.decode([31373, 17243]))
-print(tokenizer.tokenize("hello meg"))
-print(f"'{tokenizer.decode(17243)}'")
+if __name__ == "__main__":
+    print(tokenizer("hello meg"))
+    print(tokenizer.encode("hello meg"))
+    print(tokenizer.decode([31373, 17243]))
+    print(tokenizer.tokenize("hello meg"))
+    print(f"'{tokenizer.decode(17243)}'")
 # %%
 class Embedding(nn.Module):
 
@@ -45,7 +46,8 @@ class Embedding(nn.Module):
     def extra_repr(self) -> str:
         return f"{self.num_embeddings}, {self.embedding_dim}"
 
-utils_w1d1.test_embedding(Embedding)
+if __name__ == "__main__":
+    utils_w1d1.test_embedding(Embedding)
 # %%
 #TODO positional encoding
 class PositionalEncoding(nn.Module):
@@ -95,12 +97,13 @@ class LayerNorm(nn.Module):
 
     def extra_repr(self) -> str:
         pass
-
-utils_w1d1.test_layernorm_mean_1d(LayerNorm)
-utils_w1d1.test_layernorm_mean_2d(LayerNorm)
-utils_w1d1.test_layernorm_std(LayerNorm)
-utils_w1d1.test_layernorm_exact(LayerNorm)
-utils_w1d1.test_layernorm_backward(LayerNorm)
+    
+if __name__ == "__main__":
+    utils_w1d1.test_layernorm_mean_1d(LayerNorm)
+    utils_w1d1.test_layernorm_mean_2d(LayerNorm)
+    utils_w1d1.test_layernorm_std(LayerNorm)
+    utils_w1d1.test_layernorm_exact(LayerNorm)
+    utils_w1d1.test_layernorm_backward(LayerNorm)
 # %%
 from dataclasses import dataclass
 
@@ -288,13 +291,15 @@ sweep_config = {
      }
 }
 
-sweep_id = wandb.sweep(sweep=sweep_config, project='w1d1_transformer_fixed')
+if __name__ == "__main__":
+    sweep_id = wandb.sweep(sweep=sweep_config, project='w1d1_transformer_fixed')
 
-wandb.agent(sweep_id=sweep_id, function=train, count=15)
+    wandb.agent(sweep_id=sweep_id, function=train, count=15)
 
 # %%
-print(model(t.tensor([[1, 2, 3, 4, 5, 6]])).argmax(-1))
-print(model(t.tensor([[1, 2, 3, 4, 6, 6]])).argmax(-1))
-print(model(t.tensor([[1, 2, 3, 4, 8, 6]])).argmax(-1))
-print(model(t.tensor([[4, 4, 8, 4, 9, 6]])).argmax(-1))
+if False:
+    print(model(t.tensor([[1, 2, 3, 4, 5, 6]])).argmax(-1))
+    print(model(t.tensor([[1, 2, 3, 4, 6, 6]])).argmax(-1))
+    print(model(t.tensor([[1, 2, 3, 4, 8, 6]])).argmax(-1))
+    print(model(t.tensor([[4, 4, 8, 4, 9, 6]])).argmax(-1))
 # %%

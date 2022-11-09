@@ -70,20 +70,21 @@ def greedy_search(logits: t.Tensor) -> int:
     '''
     return logits.argmax().numpy()
 
-prompt = "Jingle bells, jingle bells, jingle all the way"
-print("Greedy decoding with prompt: ", prompt)
-output = sample_tokens(gpt, tokenizer, prompt, max_tokens_generated=8, temperature=0.0)
-print(f"Your model said: {output}")
-expected = "Jingle bells, jingle bells, jingle all the way up to the top of the mountain."
-assert output == expected
+if __name__ == "__main__":
+    prompt = "Jingle bells, jingle bells, jingle all the way"
+    print("Greedy decoding with prompt: ", prompt)
+    output = sample_tokens(gpt, tokenizer, prompt, max_tokens_generated=8, temperature=0.0)
+    print(f"Your model said: {output}")
+    expected = "Jingle bells, jingle bells, jingle all the way up to the top of the mountain."
+    assert output == expected
 
-print("Greedy decoding a second time (should be deterministic): ")
-output = sample_tokens(gpt, tokenizer, prompt, max_tokens_generated=8, temperature=0.0)
-print(f"Your model said: {output}")
-expected = "Jingle bells, jingle bells, jingle all the way up to the top of the mountain."
-assert output == expected
+    print("Greedy decoding a second time (should be deterministic): ")
+    output = sample_tokens(gpt, tokenizer, prompt, max_tokens_generated=8, temperature=0.0)
+    print(f"Your model said: {output}")
+    expected = "Jingle bells, jingle bells, jingle all the way up to the top of the mountain."
+    assert output == expected
 
-print("Tests passed!")
+    print("Tests passed!")
 # %%
 def sample_basic(logits: t.Tensor) -> int:
     '''
@@ -93,14 +94,15 @@ def sample_basic(logits: t.Tensor) -> int:
     '''
     return t.distributions.categorical.Categorical(logits=logits).sample()
 
-N = 20000
-probs = t.linspace(0, 0.4, 5)
-unnormalized_logits = probs.log() + 1.2345
-samples = t.tensor([sample_basic(unnormalized_logits) for _ in range(N)])
-counts = t.bincount(samples, minlength=len(probs)) / N
-print("Checking empirical frequencies (try to increase N if this test fails): ", counts)
-t.testing.assert_close(counts, probs, atol=0.01, rtol=0)
-print("Tests passed!")
+if __name__ == "__main__":
+    N = 20000
+    probs = t.linspace(0, 0.4, 5)
+    unnormalized_logits = probs.log() + 1.2345
+    samples = t.tensor([sample_basic(unnormalized_logits) for _ in range(N)])
+    counts = t.bincount(samples, minlength=len(probs)) / N
+    print("Checking empirical frequencies (try to increase N if this test fails): ", counts)
+    t.testing.assert_close(counts, probs, atol=0.01, rtol=0)
+    print("Tests passed!")
 # %%
 def apply_temperature(logits: t.Tensor, temperature: float) -> t.Tensor:
     '''
@@ -132,14 +134,14 @@ def apply_freq_penalty(input_ids: t.Tensor, logits: t.Tensor, freq_penalty: floa
     logits -= count * freq_penalty
     return logits
 
-
-bieber_prompt = "And I was like Baby, baby, baby, oh Like, Baby, baby, baby, no Like, Baby, baby, baby, oh I thought you'd always be mine, mine"
-input_ids = tokenizer.encode(bieber_prompt, return_tensors="pt").squeeze()
-logits = t.ones(tokenizer.vocab_size)
-penalized_logits = apply_freq_penalty(input_ids, logits, 2.0)
-assert penalized_logits[5156].item() == -11, "Expected 6 occurrences of ' baby' with leading space"
-assert penalized_logits[14801].item() == -5, "Expected 3 occurrences of ' Baby' with leading space"
-print("Tests passed!")
+if __name__ == "__main__":
+    bieber_prompt = "And I was like Baby, baby, baby, oh Like, Baby, baby, baby, no Like, Baby, baby, baby, oh I thought you'd always be mine, mine"
+    input_ids = tokenizer.encode(bieber_prompt, return_tensors="pt").squeeze()
+    logits = t.ones(tokenizer.vocab_size)
+    penalized_logits = apply_freq_penalty(input_ids, logits, 2.0)
+    assert penalized_logits[5156].item() == -11, "Expected 6 occurrences of ' baby' with leading space"
+    assert penalized_logits[14801].item() == -5, "Expected 3 occurrences of ' Baby' with leading space"
+    print("Tests passed!")
 # %%
 N_RUNS = 1
 your_prompt = "Jingle bells, jingle bells, jingle all the way"
@@ -167,22 +169,24 @@ def sample_top_k(logits: t.Tensor, top_k: int) -> int:
     values, indices = t.topk(logits, top_k)
     return indices[sample_basic(values)]
 
-N = 50000
-k = 3
-probs = t.linspace(0, 0.4, 5)
-unnormalized_logits = probs.log() + 1.2345
-samples = t.tensor([sample_top_k(unnormalized_logits, k) for _ in range(N)])
-counts = t.bincount(samples, minlength=len(probs)) / N
-expected = probs.clone()
-expected[:-k] = 0
-expected /= expected.sum()
-print("Checking empirical frequencies (try to increase N if this test fails): ", counts)
-t.testing.assert_close(counts, expected, atol=0.01, rtol=0)
-print("Tests passed!")
+if __name__ == "__main__":
+    N = 50000
+    k = 3
+    probs = t.linspace(0, 0.4, 5)
+    unnormalized_logits = probs.log() + 1.2345
+    samples = t.tensor([sample_top_k(unnormalized_logits, k) for _ in range(N)])
+    counts = t.bincount(samples, minlength=len(probs)) / N
+    expected = probs.clone()
+    expected[:-k] = 0
+    expected /= expected.sum()
+    print("Checking empirical frequencies (try to increase N if this test fails): ", counts)
+    t.testing.assert_close(counts, expected, atol=0.01, rtol=0)
+    print("Tests passed!")
 # %%
-your_prompt = "In a shocking finding, scientist discovered a herd of unicorns living in a remote, previously unexplored valley, in the Andes Mountains. Even more surprising to the researchers was the fact that the unicorns spoke perfect English."
-output = sample_tokens(gpt, tokenizer, your_prompt, temperature=0.7, top_k=40, max_tokens_generated=64)
-print(f"Your model said: {repr(output)}")
+if __name__ == "__main__":
+    your_prompt = "In a shocking finding, scientist discovered a herd of unicorns living in a remote, previously unexplored valley, in the Andes Mountains. Even more surprising to the researchers was the fact that the unicorns spoke perfect English."
+    output = sample_tokens(gpt, tokenizer, your_prompt, temperature=0.7, top_k=40, max_tokens_generated=64)
+    print(f"Your model said: {repr(output)}")
 # %%
 def sample_top_p(logits: t.Tensor, top_p: float, min_tokens_to_keep: int = 1) -> int:
     '''
@@ -198,35 +202,37 @@ def sample_top_p(logits: t.Tensor, top_p: float, min_tokens_to_keep: int = 1) ->
     sample = t.distributions.categorical.Categorical(probs=t.tensor(masked_probs)).sample()
     return sorted_indices[sample]
 
-N = 2000
-unnormalized_logits = t.tensor([0.2, 0.3, 0.5]).log() + 2.3456
-samples = t.tensor([sample_top_p(unnormalized_logits, 0.5) for _ in range(N)])
-counts = t.bincount(samples, minlength=len(unnormalized_logits)) / N
-print("top_p of 0.5 or lower should only return token 2: ", counts)
-assert counts[0] == 0 and counts[1] == 0
+if __name__ == "__main__":
+    N = 2000
+    unnormalized_logits = t.tensor([0.2, 0.3, 0.5]).log() + 2.3456
+    samples = t.tensor([sample_top_p(unnormalized_logits, 0.5) for _ in range(N)])
+    counts = t.bincount(samples, minlength=len(unnormalized_logits)) / N
+    print("top_p of 0.5 or lower should only return token 2: ", counts)
+    assert counts[0] == 0 and counts[1] == 0
 
-N = 2000
-unnormalized_logits = t.tensor([0.2, 0.3, 0.5]).log() + 2.3456
-samples = t.tensor([sample_top_p(unnormalized_logits, 0.50001) for _ in range(N)])
-counts = t.bincount(samples, minlength=len(unnormalized_logits)) / N
-print("top_p in (0.5, 0.8] should return tokens 1 and 2: ", counts)
-assert counts[0] == 0
+    N = 2000
+    unnormalized_logits = t.tensor([0.2, 0.3, 0.5]).log() + 2.3456
+    samples = t.tensor([sample_top_p(unnormalized_logits, 0.50001) for _ in range(N)])
+    counts = t.bincount(samples, minlength=len(unnormalized_logits)) / N
+    print("top_p in (0.5, 0.8] should return tokens 1 and 2: ", counts)
+    assert counts[0] == 0
 
-N = 50000
-top_p = 0.71
-probs = t.linspace(0, 0.4, 5)
-unnormalized_logits = probs.log() + 1.2345
-samples = t.tensor([sample_top_p(unnormalized_logits, top_p) for _ in range(N)])
-counts = t.bincount(samples, minlength=len(probs)) / N
-expected = probs.clone()
-expected[0:2] = 0
-expected /= expected.sum()
-print("Checking empirical frequencies (try to increase N if this test fails): ", counts)
-t.testing.assert_close(counts, expected, atol=0.01, rtol=0.0)
+    N = 50000
+    top_p = 0.71
+    probs = t.linspace(0, 0.4, 5)
+    unnormalized_logits = probs.log() + 1.2345
+    samples = t.tensor([sample_top_p(unnormalized_logits, top_p) for _ in range(N)])
+    counts = t.bincount(samples, minlength=len(probs)) / N
+    expected = probs.clone()
+    expected[0:2] = 0
+    expected /= expected.sum()
+    print("Checking empirical frequencies (try to increase N if this test fails): ", counts)
+    t.testing.assert_close(counts, expected, atol=0.01, rtol=0.0)
 
-print("All tests passed!")
+    print("All tests passed!")
 # %%
-your_prompt = "Eliezer Shlomo Yudkowsky (born September 11, 1979) is an American decision and artificial intelligence (AI) theorist and writer, best known for"
-output = sample_tokens(gpt, tokenizer, your_prompt, temperature=0.7, top_p=0.95, max_tokens_generated=64)
-print(f"Your model said: {repr(output)}")
+if __name__ == "__main__":
+    your_prompt = "Eliezer Shlomo Yudkowsky (born September 11, 1979) is an American decision and artificial intelligence (AI) theorist and writer, best known for"
+    output = sample_tokens(gpt, tokenizer, your_prompt, temperature=0.7, top_p=0.95, max_tokens_generated=64)
+    print(f"Your model said: {repr(output)}")
 # %%
