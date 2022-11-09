@@ -200,13 +200,13 @@ import wandb
 device = t.device('cpu')
 def train():
 
-    wandb_config_dict = {
-        'batch_size': 256,
-        'hidden_size': 64,
-        'lr': 0.00125
-    }
+    #wandb_config_dict = {
+    #    'batch_size': 256,
+    #    'hidden_size': 64,
+    #    'lr': 0.00125
+    #}
     
-    wandb.init(project='w1d1_transformer', config=wandb_config_dict)
+    wandb.init()
 
     config = TransformerConfig(
         num_layers=2, #N=6
@@ -260,9 +260,11 @@ def train():
                 x = x.to(device)
                 y = y.to(device)
                 y_hat = model(x)
-                y_predictions = y_hat.argmax(-1)
-                accuracy += (y_predictions == y).sum().item()
-                total += y.size(0)
+                y_flat = rearrange(y, "batch seq -> (batch seq)")
+                y_pred_flat = rearrange(y_hat, "batch seq vocab_size -> (batch seq) vocab_size")
+                y_predictions = y_pred_flat.argmax(-1)
+                accuracy += (y_predictions == y_flat).sum().item()
+                total += y_flat.size(0)
 
             wandb.log({"test_accuracy": accuracy/total}, step=examples_seen)
 
@@ -274,24 +276,22 @@ def train():
     wandb.save(filename)
     return model
 
-model = train()
-"""
 sweep_config = {
     'method': 'bayes',
-    'name': 'w1d1_transformer',
+    'name': 'w1d1_transformer_fixed',
     'metric': {'name': 'test_accuracy', 'goal': 'maximize'},
     'parameters': 
     {
-        'batch_size': {'values': [32]},
-        'hidden_size': {'values': [64]},
-        'lr': {'max': 0.2, 'min': 0.0001, 'distribution': 'log_uniform_values'}
+        'batch_size': {'values': [256]},
+        'hidden_size': {'values': [64, 128, 256]},
+        'lr': {'max': 0.05, 'min': 0.0001, 'distribution': 'log_uniform_values'}
      }
 }
 
-sweep_id = wandb.sweep(sweep=sweep_config, project='w1d1_transformer')
+sweep_id = wandb.sweep(sweep=sweep_config, project='w1d1_transformer_fixed')
 
-wandb.agent(sweep_id=sweep_id, function=train, count=1)
-"""
+wandb.agent(sweep_id=sweep_id, function=train, count=15)
+
 # %%
 print(model(t.tensor([[1, 2, 3, 4, 5, 6]])).argmax(-1))
 print(model(t.tensor([[1, 2, 3, 4, 6, 6]])).argmax(-1))
