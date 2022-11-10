@@ -1,5 +1,4 @@
 # %%
-
 import torch as t
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
@@ -8,7 +7,6 @@ from typing import Optional,Union
 import re
 import requests
 import torch.nn as nn
-from fancy_einsum import einsum
 from typing import Union, Optional
 from einops import rearrange
 from tqdm.notebook import tqdm_notebook
@@ -29,33 +27,39 @@ class WordsDataset(Dataset):
         text = self.texts[idx]
         sample = (text, label)
         return sample
-
-#shakespeare_text = requests.get("https://www.gutenberg.org/files/100/100-0.txt").content.decode('utf-8')
-# %%
-#print(shakespeare_text[:1000])
-# %%
-with open('data/shakespeare.txt', encoding='utf-8') as f:
-    shakespeare_text = f.read()
 # %%
 def tokenize(text):
     return re.split(r"\b", text)
 
-def remove_spaces(text):
-    if "  " in text:
-        text = text.replace("  ", " ")
-        return remove_spaces(text)
+def remove_duplicates(text, string=" "):
+    if string + string in text:
+        text = text.replace(string + string, string)
+        return remove_duplicates(text, string)
     return text
 
 # %%
 class Data():
-    def __init__(self, text):
-        self.complete_text = remove_spaces(text)
+    def __init__(self, text, start=None, end=None):
+        self.complete_text = remove_duplicates(remove_duplicates(text, " "), "\n")
+        if start is not None and end is not None:
+            self.complete_text = self.get_excerpt(start, end)
         self.complete_tokens = tokenize(self.complete_text)
-        self.vocab = sorted(list(set(self.complete_tokens)))
+        self.vocab = sorted(set(self.complete_tokens))
         self.token_to_id = dict(zip(self.vocab, list(range(len(self.vocab)))))
         self.id_to_token = dict(zip(list(range(len(self.vocab))), self.vocab))
+        self.model_max_length = None
 
-    def get_excerpt(self, start="THE SONNETS", end="THE END", text=None):
+    @staticmethod
+    def from_link(link, start=None, end=None):
+        return Data(requests.get(link).content.decode('utf-8'), start, end)
+
+    @staticmethod
+    def from_file(filename, start=None, end=None):
+        with open(filename, encoding='utf-8') as f:
+            text = f.read()
+        return Data(text, start, end)
+
+    def get_excerpt(self, start, end, text=None):
         if text is None:
             text = self.complete_text
         return text.split(start, maxsplit=1)[1].split(end, maxsplit=1)[0]
@@ -88,9 +92,7 @@ class Data():
         tokens = [self.id_to_token[int(i)] for i in list_of_ids]
         return "".join(tokens)
 
-shakespeare = Data(shakespeare_text)
-shakespeare.vocab[:10000]
-
+shakespeare = Data.from_file('data/shakespeare.txt', start="From ", end='END')
 #%%
 import wandb
 device = t.device('cpu')
@@ -98,13 +100,15 @@ device = t.device('cpu')
 config = None
 
 def train():
-    #wandb_config_dict = {
-    #    'batch_size': 256,
-    #    'hidden_size': 64,
-    #    'lr': 0.003
-    #}
-
-    wandb.init()
+    #wandb.init()
+    
+    wandb_config_dict = {
+        'batch_size': 64,
+        'hidden_size': 256,
+        'lr': 0.001,
+        'max_seq_len': 40
+    }
+    wandb.init(project='shakespeare', config=wandb_config_dict)
 
     config = transformer_replication.TransformerConfig(
         num_layers=6, #N=6
@@ -126,8 +130,8 @@ def train():
     examples_seen = 0
     start_time = time.time()
 
-    traintext = shakespeare.get_excerpt("From fairest", "140")
-    testtext = shakespeare.get_excerpt("140", "THE END")
+    traintext = shakespeare.get_excerpt("fairest", "150")
+    testtext = shakespeare.get_excerpt("150", "THE ")
 
     trainset = shakespeare.generate_autoregressive_dataset(config.max_seq_len, traintext)
     testset = shakespeare.generate_autoregressive_dataset(config.max_seq_len, testtext)
@@ -173,29 +177,37 @@ def train():
     print(f"Saving model to: {filename}")
     t.save(model.state_dict(), filename)
     wandb.save(filename)
+    shakespeare.model_max_length = wandb.config.max_seq_len
+    text_output = sampling.sample_tokens(model, shakespeare, ' It was a beautiful ', max_tokens_generated=100, temperature=1.0, top_k=10)
+    print(text_output)
+    return model
 
+"""
 sweep_config = {
-    'method': 'bayes',
-    'name': 'shakespeare_sweep',
-    'metric': {'name': 'test_accuracy', 'goal': 'maximize'},
-    'parameters': 
-    {
-        'batch_size': {'values': [256]},
-        'hidden_size': {'values': [64, 128, 256]},
-        'max_seq_len': {'values': [5, 10, 15]},
-        'lr': {'max': 0.05, 'min': 0.0001, 'distribution': 'log_uniform_values'}
-     }
-}
+        'method': 'bayes',
+        'name': 'shakespeare_sweep',
+        'metric': {'name': 'test_accuracy', 'goal': 'maximize'},
+        'parameters': 
+        {
+            'batch_size': {'values': [64]},
+            'hidden_size': {'values': [64]},
+            'max_seq_len': {'values': [20]},
+            'lr': {'values': [0.001]},
+            #'lr': {'max': 0.05, 'min': 0.0001, 'distribution': 'log_uniform_values'}
+        }
+    }
 
 sweep_id = wandb.sweep(sweep=sweep_config, project='shakespeare')
 
-wandb.agent(sweep_id=sweep_id, function=train, count=10)
+wandb.agent(sweep_id=sweep_id, function=train, count=1)
+"""
+model = train()
 # %%
 
-print(wandb.run.dir)
-model = transformer_replication.DecoderOnlyTransformer(config)
-model.load_state_dict(t.load("/Users/m/Documents/arena/wandb/run-20221109_135624-3suubzjf/files/model_state_dict.pt"))
-
-text_output = sampling.sample_tokens(model, shakespeare, "He sang a wonderful song ", max_tokens_generated=100, temperature=10.0, top_k=15)
+#print(wandb.run.dir)
+#model = transformer_replication.DecoderOnlyTransformer(config)
+#model.load_weights(wandb.restore("/Users/m/Documents/arena/wandb/run-20221110_103122-1qjib12l/files/model_state_dict.pt"))
+shakespeare.model_max_length = wandb.config.max_seq_len
+text_output = sampling.sample_tokens(model, shakespeare, ' from fairest ', max_tokens_generated=100, temperature=1.0, top_k=10)
 print(text_output)
 # %%
