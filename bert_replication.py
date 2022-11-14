@@ -129,6 +129,22 @@ def make_additive_attention_mask(one_zero_attention_mask: t.Tensor, big_negative
 if __name__ == "__main__":
     utils_w1d4.test_make_additive_attention_mask(make_additive_attention_mask)
 
+
+class BERTClassifier(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.bert_common = BERTCommon(config)
+        self.token_embedding_bias = BiasLayer(config.vocab_size)
+        self.dropout = nn.Dropout(config.dropout)
+        self.linear_sentiment = nn.Linear(config.hidden_size, 2)
+        self.linear_stars = nn.Linear(config.hidden_size, 1)
+
+    def forward(self, x: t.Tensor, one_zero_attention_mask: Optional[t.Tensor] = None, token_type_ids: Optional[t.Tensor] = None, sentiment=True):
+        x = self.bert_common(x, one_zero_attention_mask, token_type_ids)
+        x = x[:, 0, :]
+        x = self.dropout(x)
+        return self.linear_sentiment(x), self.linear_stars(x)
+
 #%%
 bert = transformers.BertForMaskedLM.from_pretrained("bert-base-cased")
 tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-cased")
