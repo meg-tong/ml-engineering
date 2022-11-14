@@ -3,10 +3,14 @@ import torch as t
 import torch.nn.functional as F
 import transformers
 import numpy as np
+from typing import List, Tuple
 
-gpt = transformers.AutoModelForCausalLM.from_pretrained("gpt2")
-tokenizer = transformers.AutoTokenizer.from_pretrained("gpt2")
+# %%
+if __name__ == "__main__":
+    gpt = transformers.AutoModelForCausalLM.from_pretrained("gpt2")
+    tokenizer = transformers.AutoTokenizer.from_pretrained("gpt2")
 
+# %%
 def apply_sampling_methods(
     input_ids: t.Tensor, logits: t.Tensor, temperature=1.0, freq_penalty=0.0, top_k=0, top_p=0.0
 ) -> int:
@@ -33,6 +37,12 @@ x
         return sample_top_p(logits, top_p)
     return sample_basic(logits)
 
+def get_logits(new_input_ids, tokenizer, model, device):
+    new_input_ids_truncated = new_input_ids[-min(tokenizer.model_max_length, new_input_ids.shape[0]):].unsqueeze(0)
+    output = model(new_input_ids_truncated)
+    all_logits = output if isinstance(output, t.Tensor) else output.logits
+    return all_logits[0, -1] #batch=0, seq_len=-1 -> returns vocab_size
+
 def sample_tokens(
     model,
     tokenizer,
@@ -51,10 +61,7 @@ def sample_tokens(
     device = next(model.parameters()).device
     for _ in range(max_tokens_generated):
         new_input_ids = t.tensor(np.array(input_ids + generated), dtype=t.int64, device=device)
-        new_input_ids_truncated = new_input_ids[-min(tokenizer.model_max_length, new_input_ids.shape[0]):].unsqueeze(0)
-        output = model(new_input_ids_truncated)
-        all_logits = output if isinstance(output, t.Tensor) else output.logits
-        logits = all_logits[0, -1] #batch=0, seq_len=-1 -> returns vocab_size
+        logits = get_logits(new_input_ids, tokenizer, model, device)
         new_token = apply_sampling_methods(new_input_ids, logits, **kwargs)
         generated.append(new_token)
         if new_token == getattr(tokenizer, "eos_token_id", None):
@@ -113,14 +120,15 @@ def apply_temperature(logits: t.Tensor, temperature: float) -> t.Tensor:
     assert temperature > 0
     return logits / temperature
 
-logits = t.tensor([1, 2]).log()
-cold_logits = apply_temperature(logits, 0.001)
-print('A low temperature "sharpens" or "peaks" the distribution: ', cold_logits)
-t.testing.assert_close(cold_logits, 1000.0 * logits)
-hot_logits = apply_temperature(logits, 1000.0)
-print("A high temperature flattens the distribution: ", hot_logits)
-t.testing.assert_close(hot_logits, 0.001 * logits)
-print("Tests passed!")
+if __name__ == "__main__":
+    logits = t.tensor([1, 2]).log()
+    cold_logits = apply_temperature(logits, 0.001)
+    print('A low temperature "sharpens" or "peaks" the distribution: ', cold_logits)
+    t.testing.assert_close(cold_logits, 1000.0 * logits)
+    hot_logits = apply_temperature(logits, 1000.0)
+    print("A high temperature flattens the distribution: ", hot_logits)
+    t.testing.assert_close(hot_logits, 0.001 * logits)
+    print("Tests passed!")
 
 # %%
 def apply_freq_penalty(input_ids: t.Tensor, logits: t.Tensor, freq_penalty: float) -> t.Tensor:
@@ -153,11 +161,12 @@ cases = [
     ("Pleasantly warm", dict(temperature=0.9)),
     ("Too cold!", dict(temperature=0.01)),
 ]
-for (name, kwargs) in cases:
-    for i in range(N_RUNS):
-        output = sample_tokens(gpt, tokenizer, your_prompt, max_tokens_generated=24, **kwargs)
-        print(f"Sample {i} with: {name} ({kwargs}):")
-        print(f"Your model said: {repr(output)}\n")
+if __name__ == "__main__":
+    for (name, kwargs) in cases:
+        for i in range(N_RUNS):
+            output = sample_tokens(gpt, tokenizer, your_prompt, max_tokens_generated=24, **kwargs)
+            print(f"Sample {i} with: {name} ({kwargs}):")
+            print(f"Your model said: {repr(output)}\n")
 # %%
 def sample_top_k(logits: t.Tensor, top_k: int) -> int:
     '''
@@ -167,7 +176,7 @@ def sample_top_k(logits: t.Tensor, top_k: int) -> int:
     Return: a sampled token
     '''
     values, indices = t.topk(logits, top_k)
-    return indices[sample_basic(values)]
+    return indices[sample_basic(values)].item()
 
 if __name__ == "__main__":
     N = 50000
@@ -235,4 +244,57 @@ if __name__ == "__main__":
     your_prompt = "Eliezer Shlomo Yudkowsky (born September 11, 1979) is an American decision and artificial intelligence (AI) theorist and writer, best known for"
     output = sample_tokens(gpt, tokenizer, your_prompt, temperature=0.7, top_p=0.95, max_tokens_generated=64)
     print(f"Your model said: {repr(output)}")
+# %%
+def beam_search(
+    model, input_ids: t.Tensor, num_return_sequences: int, num_beams: int, max_new_tokens: int, tokenizer, verbose=False
+) -> List[Tuple[float, t.Tensor]]:
+    '''
+    input_ids: (seq, ) - the prompt
+    max_new_tokens: stop after this many new tokens are generated, even if no EOS is generated. In this case, the best incomplete sequences should also be returned.
+    verbose: if True, print the current (unfinished) completions after each iteration for debugging purposes
+
+    Return list of length num_return_sequences. Each element is a tuple of (logprob, tokens) where the tokens include both prompt and completion, sorted by descending logprob.
+    '''
+    assert num_return_sequences <= num_beams
+    model.eval()
+    device = next(model.parameters()).device
+    to_be_continued = [(0, input_ids)]
+    finished = []
+    with t.inference_mode():
+        for _ in range(max_new_tokens):
+            print("Adding {} tokens".format(_))
+            possibilities = []
+            for completion_log_prob, completion in to_be_continued:
+                new_input_ids = t.tensor(np.array(completion), dtype=t.int64, device=device)
+                logits = get_logits(new_input_ids, tokenizer, model, device)
+                log_probs = t.nn.functional.log_softmax(logits, dim=0)
+                k_log_probs, k_indices = t.topk(log_probs, num_beams)
+                for log_prob, index in zip(k_log_probs, k_indices):
+                    possibility = (completion_log_prob + log_prob, list(completion) + [index.item()])
+                    if index == getattr(tokenizer, "eos_token_id", None):
+                        finished.append(possibility)
+                    possibilities.append(possibility)
+            to_be_continued = sorted(possibilities, key=lambda x: x[0], reverse=True)[:num_beams]
+            if verbose:
+                for log_prob, completion in to_be_continued:
+                    print(log_prob, tokenizer.decode(completion))
+                print()
+    finished = finished + to_be_continued
+    return sorted(finished, key=lambda x: x[0], reverse=True)[:num_return_sequences]
+    #
+
+if __name__ == "__main__":
+    #tokenizer = transformers.AutoTokenizer.from_pretrained("gpt2")
+    #gpt = transformers.AutoModelForCausalLM.from_pretrained("gpt2").to(device).train()
+
+    your_prompt = "I don't want to rule the universe. I just think"
+    input_ids = tokenizer(your_prompt, return_tensors="pt", return_attention_mask=False)["input_ids"][0]
+
+    num_return_sequences = 3
+    num_beams = 6
+    max_new_tokens = 10
+
+    final_logitsums_and_completions = beam_search(gpt, input_ids, num_return_sequences, num_beams, max_new_tokens, tokenizer, verbose=True)
+    for log_prob, completion in final_logitsums_and_completions:
+        print(log_prob, tokenizer.decode(completion))
 # %%
