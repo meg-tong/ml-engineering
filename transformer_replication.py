@@ -7,16 +7,11 @@ from typing import Union, List
 from fancy_einsum import einsum
 import torch as t
 from torch import nn
-from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from fancy_einsum import einsum
-from typing import Union, Optional, Callable, Tuple
-import numpy as np
+from typing import Union, Callable
 from einops import rearrange
 from tqdm.notebook import tqdm_notebook
-import plotly.express as px
-import plotly.graph_objs as go
-from plotly.subplots import make_subplots
 import time
 import wandb
 # %%
@@ -121,7 +116,7 @@ class TransformerConfig:
 # %%
 import attention_replication
 
-class BertMLP(nn.Module):
+class MLP(nn.Module):
     def __init__(self, config: TransformerConfig):
         super().__init__()
         self.linear1 = nn.Linear(config.hidden_size, 4 * config.hidden_size)
@@ -142,7 +137,7 @@ class DecoderBlock(nn.Module):
         super().__init__()
         self.attention = attention_replication.MultiheadMaskedAttention(config.hidden_size, config.num_heads)
         self.layer_norm1 = nn.LayerNorm(config.hidden_size, config.layer_norm_epsilon)
-        self.mlp = BertMLP(config)
+        self.mlp = MLP(config)
         self.layer_norm2 = nn.LayerNorm(config.hidden_size, config.layer_norm_epsilon)
 
     def forward(self, x: t.Tensor) -> t.Tensor:
@@ -161,7 +156,7 @@ class DecoderOnlyTransformer(nn.Module):
         self.token_embedding = Embedding(config.vocab_size, config.hidden_size)
         self.positional_embedding = positional_embedding(config.max_seq_len, config.hidden_size)
         self.dropout = nn.Dropout(config.dropout)
-        self.bert_blocks = nn.Sequential(*[decoderBlock(config) for _ in range(config.num_layers)])
+        self.blocks = nn.Sequential(*[decoderBlock(config) for _ in range(config.num_layers)])
         self.layer_norm = nn.LayerNorm(config.hidden_size, config.layer_norm_epsilon)
         
     def forward(self, x: t.Tensor) -> t.Tensor:
@@ -172,7 +167,7 @@ class DecoderOnlyTransformer(nn.Module):
             pos = t.arange(x.shape[1], device=x.device)
             x = self.token_embedding(x) + self.positional_embedding(pos)
         x = self.dropout(x)
-        for block in self.bert_blocks:
+        for block in self.blocks:
             x = block(x)
         x = self.layer_norm(x)
         x = einsum('num_embeddings embedding_dim,batch seq_len embedding_dim ->batch seq_len num_embeddings', self.token_embedding.weight, x)
