@@ -2,7 +2,6 @@
 import torch as t
 import torch.nn as nn 
 import transformer_replication
-import attention_replication
 from fancy_einsum import einsum
 from einops import repeat, rearrange
 import numpy as np
@@ -62,7 +61,7 @@ class GPTDecoderBlock(nn.Module):
         self.layer_norm1 = nn.LayerNorm(config.hidden_size, config.layer_norm_epsilon)
         self.attention = GPTMultiheadMaskedAttention(config.hidden_size, config.num_heads)
         self.layer_norm2 = nn.LayerNorm(config.hidden_size, config.layer_norm_epsilon)
-        self.mlp = transformer_replication.BertMLP(config)
+        self.mlp = transformer_replication.MLP(config)
 
     def forward(self, x: t.Tensor) -> t.Tensor:
         y = self.layer_norm1(x)
@@ -84,30 +83,29 @@ config = transformer_replication.TransformerConfig(
     )
 
 #%%
-def copy_weights_from_gpt(my_gpt: transformer_replication.DecoderOnlyTransformer, gpt) -> transformer_replication.DecoderOnlyTransformer:
+def copy_weights(my_model, model, gpt2=True):
     '''
-    Copy over the weights from gpt to your implementation of gpt.
-    Returns your gpt model, with weights loaded in.
+    Copy over the weights from the official model to your implementation of the model.
+    Returns your model, with weights loaded in.
     '''
     named_parameters = {}
-    for (name, param), (my_name, my_param) in zip(gpt.named_parameters(), my_gpt.named_parameters()):
-        if len(param.shape) > 1 and param.shape[0] == my_param.shape[1] and param.shape[1] == my_param.shape[0]:
+    for (name, param), (my_name, my_param) in zip(model.named_parameters(), my_model.named_parameters()):
+        if gpt2 and len(param.shape) > 1 and param.shape[0] == my_param.shape[1] and param.shape[1] == my_param.shape[0]:
             named_parameters[my_name] = rearrange(param, 'i j -> j i')
         else:
             named_parameters[my_name] = param
 
-    my_gpt.load_state_dict(named_parameters)
-    return my_gpt
+    my_model.load_state_dict(named_parameters)
+    return my_model
 #%%
-my_gpt = transformer_replication.DecoderOnlyTransformer(config, transformer_replication.Embedding, GPTDecoderBlock).train()
-gpt = transformers.AutoModelForCausalLM.from_pretrained("gpt2").train()
-#utils_w1d4.print_param_count(my_gpt, gpt, use_state_dict=False)
-# %%
-my_gpt = copy_weights_from_gpt(my_gpt, gpt)
-# %%
-tokenizer = transformers.AutoTokenizer.from_pretrained("gpt2")
-utils_w1d4.test_load_pretrained_weights(gpt, tokenizer)
-utils_w1d4.test_load_pretrained_weights(my_gpt, tokenizer)
+if __name__ == "__main__":
+    my_gpt = transformer_replication.DecoderOnlyTransformer(config, transformer_replication.Embedding, GPTDecoderBlock).train()
+    gpt = transformers.AutoModelForCausalLM.from_pretrained("gpt2").train()
+    #utils_w1d4.print_param_count(my_gpt, gpt, use_state_dict=False)
+    my_gpt = copy_weights(my_gpt, gpt)
+    tokenizer = transformers.AutoTokenizer.from_pretrained("gpt2")
+    utils_w1d4.test_load_pretrained_weights(gpt, tokenizer)
+    utils_w1d4.test_load_pretrained_weights(my_gpt, tokenizer)
 
 # %%
 # %%
