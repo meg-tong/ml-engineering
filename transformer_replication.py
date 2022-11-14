@@ -156,17 +156,21 @@ class DecoderBlock(nn.Module):
 
 class DecoderOnlyTransformer(nn.Module):
 
-    def __init__(self, config: TransformerConfig):
+    def __init__(self, config: TransformerConfig, positional_embedding: Callable = PositionalEncoding, decoderBlock: Callable = DecoderBlock):
         super().__init__()
         self.token_embedding = Embedding(config.vocab_size, config.hidden_size)
-        self.positional_embedding = PositionalEncoding(config.max_seq_len, config.hidden_size)
+        self.positional_embedding = positional_embedding(config.max_seq_len, config.hidden_size)
         self.dropout = nn.Dropout(config.dropout)
-        self.bert_blocks = nn.Sequential(*[DecoderBlock(config) for _ in range(config.num_layers)])
+        self.bert_blocks = nn.Sequential(*[decoderBlock(config) for _ in range(config.num_layers)])
         self.layer_norm = nn.LayerNorm(config.hidden_size, config.layer_norm_epsilon)
         
     def forward(self, x: t.Tensor) -> t.Tensor:
-        x = self.token_embedding(x)
-        x = self.positional_embedding(x)
+        if isinstance(self.positional_embedding, PositionalEncoding):
+            x = self.token_embedding(x)
+            x = self.positional_embedding(x)
+        else:
+            pos = t.arange(x.shape[1], device=x.device)
+            x = self.token_embedding(x) + self.positional_embedding(pos)
         x = self.dropout(x)
         for block in self.bert_blocks:
             x = block(x)
