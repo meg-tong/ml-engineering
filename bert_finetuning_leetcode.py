@@ -9,10 +9,11 @@ import torch as t
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm.notebook import tqdm_notebook
+import wandb
 
 import bert_replication
 import transformer_replication
-import wandb
+import utils
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -85,7 +86,7 @@ class LeetCode():
         return ''.join(self.convert_numbers_to_brackets(numbers))
 
     def generate_all_strings(self, length=6):
-        return [format(n, str(length) + 'b').replace(" ", "0").replace("0", "(").replace("1", ")") for n in range(2 ** length)]
+        return [format(n, str(length) + 'b').replace(" ", "0").replace("0", "(").replace("1", ")") for n in tqdm_notebook(range(2 ** length))]
             
 class LeetCodeDataset(Dataset):
     def __init__(self, strings, labels):
@@ -282,5 +283,20 @@ sweep_config = {
     }
 sweep_id = wandb.sweep(sweep=sweep_config, project='meg_leetcode_brackets')
 wandb.agent(sweep_id=sweep_id, function=train, count=15)
-
+# %%
+model = utils.load_transformer('mk7htryf', LeetCodeTransformer, vocab_size=5)
+train_data, test_data = LeetCodeDataset.generate_smart_dataset(leetcode, tokenizer, length=24)
+#%%
+total = 40
+count = 0
+for i in np.random.randint(0, high=len(test_data), size=total):
+    string, label = test_data[i]
+    string = string.unsqueeze(0)
+    attention_mask = t.ones_like(string)
+    output = model(string.long(), attention_mask)
+    pred = output.argmax(-1).item()
+    print("string", tokenizer.decode(string[0][1:-1]), "actual", label == 1, "-> predicted", pred == 1, "✅" if pred == label else "❌")
+    if pred == label:
+        count += 1
+print(f"Accuracy = {(count / total):.0%}")
 # %%
