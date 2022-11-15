@@ -1,9 +1,9 @@
 # %%
-import torch as t
-import torch.nn.functional as F
-import transformers
-import numpy as np
 from typing import List, Tuple
+
+import numpy as np
+import torch as t
+import transformers
 
 # %%
 if __name__ == "__main__":
@@ -37,9 +37,9 @@ x
         return sample_top_p(logits, top_p)
     return sample_basic(logits)
 
-def get_logits(new_input_ids, tokenizer, model, device):
+def get_logits(new_input_ids, tokenizer, model, device, *args):
     new_input_ids_truncated = new_input_ids[-min(tokenizer.model_max_length, new_input_ids.shape[0]):].unsqueeze(0)
-    output = model(new_input_ids_truncated)
+    output = model(new_input_ids_truncated, *args)
     all_logits = output if isinstance(output, t.Tensor) else output.logits
     return all_logits[0, -1] #batch=0, seq_len=-1 -> returns vocab_size
 

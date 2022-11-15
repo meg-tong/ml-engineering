@@ -1,14 +1,18 @@
 #%%
-import torch as t
-import torchvision
-import torch.nn as nn
-import utils_w0d3
-import nn_replication
-from pathlib import Path
-from PIL import Image
-from typing import List
 import json
+from pathlib import Path
+from typing import List
+
 import matplotlib.pyplot as plt
+import torch as t
+import torch.nn as nn
+import torchvision
+from PIL import Image
+
+import arena_utils
+import nn_replication
+
+
 #%%
 class ResidualBlock(nn.Module):
     def __init__(self, in_feats: int, out_feats: int, first_stride=1):
@@ -100,7 +104,7 @@ class ResNet34(nn.Module):
 my_resnet = ResNet34()
 pretrained_resnet = torchvision.models.resnet34(weights="DEFAULT")
 
-utils_w0d3.print_param_count(my_resnet, pretrained_resnet)
+arena_utils.print_param_count(my_resnet, pretrained_resnet)
 # %%
 def copy_weights(my_resnet: ResNet34, pretrained_resnet: torchvision.models.resnet.ResNet) -> ResNet34:
     '''Copy over the weights of `pretrained_resnet` to your resnet.'''

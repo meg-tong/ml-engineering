@@ -1,11 +1,13 @@
 # %%
+from typing import List, Optional, Union
+
+import numpy as np
 import torch as t
 import torch.nn as nn
-import utils_w1d1
-from typing import Union, List, Optional
+from einops import rearrange, reduce, repeat
 from fancy_einsum import einsum
-from einops import repeat, rearrange, reduce
-import numpy as np
+
+
 #%%
 def single_head_attention(Q: t.Tensor, K: t.Tensor, V: t.Tensor) -> t.Tensor:
     '''

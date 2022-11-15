@@ -1,12 +1,10 @@
 #%%
-from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Iterator, Optional, Protocol, Union, Tuple
-from einops import repeat
-import utils_w0d5
+import arena_utils
 import time
 import re
-import utils_w0d2
+import arena_utils
 import numpy as np
 from typing import List, Dict, Optional
 global count
@@ -24,8 +22,8 @@ def log_back(grad_out: Arr, out: Arr, x: Arr) -> Arr:
     return grad_out / x
 
 import importlib
-importlib.reload(utils_w0d5)
-utils_w0d5.test_log_back(log_back)
+importlib.reload(arena_utils)
+arena_utils.test_log_back(log_back)
 # %% Unbroadcast
 def unbroadcast(broadcasted: Arr, original: Arr) -> Arr:
     '''Sum 'broadcasted' until it has the shape of 'original'.
@@ -52,7 +50,7 @@ def unbroadcast(broadcasted: Arr, original: Arr) -> Arr:
             
 
 
-utils_w0d5.test_unbroadcast(unbroadcast)
+arena_utils.test_unbroadcast(unbroadcast)
 # %% Unbroadcast_vec
 def unbroadcast_vec(broadcasted: Arr, original: Arr) -> Arr:
     '''Sum 'broadcasted' until it has the shape of 'original'.
@@ -67,7 +65,7 @@ def unbroadcast_vec(broadcasted: Arr, original: Arr) -> Arr:
     return unbroadcasted
             
 
-utils_w0d5.test_unbroadcast(unbroadcast_vec)
+arena_utils.test_unbroadcast(unbroadcast_vec)
 # %%
 def multiply_back0(grad_out: Arr, out: Arr, x: Arr, y: Union[Arr, float]) -> Arr:
     '''Backwards function for x * y wrt argument 0 aka x.'''
@@ -77,8 +75,8 @@ def multiply_back1(grad_out: Arr, out: Arr, x: Union[Arr, float], y: Arr) -> Arr
     '''Backwards function for x * y wrt argument 1 aka y.'''
     return unbroadcast(grad_out * x, y)
 
-utils_w0d5.test_multiply_back(multiply_back0, multiply_back1)
-utils_w0d5.test_multiply_back_float(multiply_back0, multiply_back1)
+arena_utils.test_multiply_back(multiply_back0, multiply_back1)
+arena_utils.test_multiply_back_float(multiply_back0, multiply_back1)
 # %%
 def forward_and_back(a: Arr, b: Arr, c: Arr) -> Tuple[Arr, Arr, Arr]:
     '''
@@ -100,8 +98,8 @@ def forward_and_back(a: Arr, b: Arr, c: Arr) -> Tuple[Arr, Arr, Arr]:
     dg_dc = dg_de / c
     return dg_da, dg_db, dg_dc
 
-importlib.reload(utils_w0d5)
-utils_w0d5.test_forward_and_back(forward_and_back)
+importlib.reload(arena_utils)
+arena_utils.test_forward_and_back(forward_and_back)
 
 #### Autograd
 # %%
@@ -129,7 +127,7 @@ class BackwardFuncLookup:
     def get_back_func(self, forward_fn: Callable, arg_position: int) -> Callable:
         return self.lookup_dict[forward_fn, arg_position]
 
-utils_w0d5.test_back_func_lookup(BackwardFuncLookup)
+arena_utils.test_back_func_lookup(BackwardFuncLookup)
 
 BACK_FUNCS = BackwardFuncLookup()
 BACK_FUNCS.add_back_func(np.log, 0, log_back)
@@ -311,8 +309,8 @@ def log_forward(x: Tensor) -> Tensor:
     return y
 
 log = log_forward
-utils_w0d5.test_log(Tensor, log_forward)
-utils_w0d5.test_log_no_grad(Tensor, log_forward)
+arena_utils.test_log(Tensor, log_forward)
+arena_utils.test_log_no_grad(Tensor, log_forward)
 a = Tensor([1], requires_grad=True)
 grad_tracking_enabled = False
 b = log_forward(a)
@@ -338,9 +336,9 @@ def multiply_forward(a: Union[Tensor, int], b: Union[Tensor, int]) -> Tensor:
     return y
 
 multiply = multiply_forward
-utils_w0d5.test_multiply(Tensor, multiply_forward)
-utils_w0d5.test_multiply_no_grad(Tensor, multiply_forward)
-utils_w0d5.test_multiply_float(Tensor, multiply_forward)
+arena_utils.test_multiply(Tensor, multiply_forward)
+arena_utils.test_multiply_no_grad(Tensor, multiply_forward)
+arena_utils.test_multiply_float(Tensor, multiply_forward)
 a = Tensor([2], requires_grad=True)
 b = Tensor([3], requires_grad=True)
 grad_tracking_enabled = False
@@ -382,14 +380,14 @@ def test_sum(wrap_forward_fn, Tensor):
     assert a.sum(0, True).shape == (1, 2)
     print("All tests in `test_sum` passed!")
 """
-importlib.reload(utils_w0d5)
+importlib.reload(arena_utils)
 log = wrap_forward_fn(np.log)
 multiply = wrap_forward_fn(np.multiply)
-utils_w0d5.test_log(Tensor, log)
-utils_w0d5.test_log_no_grad(Tensor, log)
-utils_w0d5.test_multiply(Tensor, multiply)
-utils_w0d5.test_multiply_no_grad(Tensor, multiply)
-utils_w0d5.test_multiply_float(Tensor, multiply)
+arena_utils.test_log(Tensor, log)
+arena_utils.test_log_no_grad(Tensor, log)
+arena_utils.test_multiply(Tensor, multiply)
+arena_utils.test_multiply_no_grad(Tensor, multiply)
+arena_utils.test_multiply_float(Tensor, multiply)
 #test_sum(wrap_forward_fn, Tensor)
 try:
     log(x=Tensor([100]))
@@ -399,7 +397,7 @@ except Exception as e:
 else:
     assert False, "Passing tensor by keyword should raise some informative exception."
 # %% Topological sort
-importlib.reload(utils_w0d5)
+importlib.reload(arena_utils)
 def get_children(node):
     return node.children
 
@@ -458,10 +456,10 @@ def topological_sort(node: Tensor, get_children_fn: Callable) -> List[Any]:
     visit(node)
     return result
 
-utils_w0d5.test_topological_sort_linked_list(topological_sort)
-utils_w0d5.test_topological_sort_branching(topological_sort)
-utils_w0d5.test_topological_sort_rejoining(topological_sort)
-utils_w0d5.test_topological_sort_cyclic(topological_sort)
+arena_utils.test_topological_sort_linked_list(topological_sort)
+arena_utils.test_topological_sort_branching(topological_sort)
+arena_utils.test_topological_sort_rejoining(topological_sort)
+arena_utils.test_topological_sort_cyclic(topological_sort)
 # %%
 def get_parents(ten: Tensor):
     if ten.recipe is None:
@@ -581,10 +579,10 @@ def backprop(end_node: Tensor, end_grad: Optional[Tensor] = None) -> None:
             else:
                 grads[parent] = grad
 
-utils_w0d5.test_backprop(Tensor)
-utils_w0d5.test_backprop_branching(Tensor)
-utils_w0d5.test_backprop_requires_grad_false(Tensor)
-utils_w0d5.test_backprop_float_arg(Tensor)
+arena_utils.test_backprop(Tensor)
+arena_utils.test_backprop_branching(Tensor)
+arena_utils.test_backprop_requires_grad_false(Tensor)
+arena_utils.test_backprop_float_arg(Tensor)
 
 # %%
 def _argmax(x: Arr, dim=None, keepdim=False):
@@ -607,7 +605,7 @@ def negative_back(grad_out: Arr, out: Arr, x: Arr) -> Arr:
 negative = wrap_forward_fn(np.negative)
 BACK_FUNCS.add_back_func(np.negative, 0, negative_back)
 
-utils_w0d5.test_negative_back(Tensor)
+arena_utils.test_negative_back(Tensor)
 # %% 
 def exp_back(grad_out: Arr, out: Arr, x: Arr) -> Arr:
     return grad_out * out
@@ -615,7 +613,7 @@ def exp_back(grad_out: Arr, out: Arr, x: Arr) -> Arr:
 exp = wrap_forward_fn(np.exp)
 BACK_FUNCS.add_back_func(np.exp, 0, exp_back)
 
-utils_w0d5.test_exp_back(Tensor)
+arena_utils.test_exp_back(Tensor)
 # %%
 def reshape_back(grad_out: Arr, out: Arr, x: Arr, new_shape: tuple) -> Arr:
     return np.reshape(grad_out, x.shape)
@@ -623,7 +621,7 @@ def reshape_back(grad_out: Arr, out: Arr, x: Arr, new_shape: tuple) -> Arr:
 reshape = wrap_forward_fn(np.reshape)
 BACK_FUNCS.add_back_func(np.reshape, 0, reshape_back)
 
-utils_w0d5.test_reshape_back(Tensor)
+arena_utils.test_reshape_back(Tensor)
 
 # %%
 def mlab_permute_back(grad_out: Arr, out: Arr, x: Arr, axes: tuple) -> Arr:
@@ -637,7 +635,7 @@ def permute_back(grad_out: Arr, out: Arr, x: Arr, axes: tuple) -> Arr:
 BACK_FUNCS.add_back_func(np.transpose, 0, mlab_permute_back)
 permute = wrap_forward_fn(np.transpose)
 
-utils_w0d5.test_permute_back(Tensor)
+arena_utils.test_permute_back(Tensor)
 # %% 
 def expand_back(grad_out: Arr, out: Arr, x: Arr, new_shape: tuple) -> Arr:
     return unbroadcast(grad_out, x)
@@ -654,15 +652,15 @@ def _expand(x: Arr, new_shape) -> Arr:
 expand = wrap_forward_fn(_expand)
 BACK_FUNCS.add_back_func(_expand, 0, expand_back)
 
-utils_w0d5.test_expand(Tensor)
-utils_w0d5.test_expand_negative_length(Tensor)
+arena_utils.test_expand(Tensor)
+arena_utils.test_expand_negative_length(Tensor)
 
 # %%
 def my_sum_back(grad_out: Arr, out: Arr, x: Arr, dim=None, keepdim=False):
     '''Basic idea: repeat grad_out over the dims along which x was summed'''
     # TODO need to use np.expand_dims if keepdim=False
     return np.broadcast_to(grad_out, x.shape)
-importlib.reload(utils_w0d5)
+importlib.reload(arena_utils)
 
 def mlab_coerce_dim(x, dim: Union[None, int, Tuple[int]]) -> Tuple[int]:
         if dim is None:
@@ -708,9 +706,9 @@ def _sum(x: Arr, dim=None, keepdim=False) -> Arr:
 sum = wrap_forward_fn(_sum)
 BACK_FUNCS.add_back_func(_sum, 0, cal_sum_back)
 
-utils_w0d5.test_sum_keepdim_false(Tensor)
-utils_w0d5.test_sum_keepdim_true(Tensor)
-utils_w0d5.test_sum_dim_none(Tensor)
+arena_utils.test_sum_keepdim_false(Tensor)
+arena_utils.test_sum_keepdim_true(Tensor)
+arena_utils.test_sum_dim_none(Tensor)
 # %% Indexing
 Index = Union[int, Tuple[int, ...], Tuple[Arr], Tuple[Tensor]]
 
@@ -798,10 +796,10 @@ def _cal_getitem_back(grad_out: Arr, out: Arr, x: Arr, index: Index):
 getitem = wrap_forward_fn(_my_getitem)
 BACK_FUNCS.add_back_func(_my_getitem, 0, _my_getitem_back)
 
-utils_w0d5.test_getitem_int(Tensor)
-utils_w0d5.test_getitem_tuple(Tensor)
-utils_w0d5.test_getitem_integer_array(Tensor)
-utils_w0d5.test_getitem_integer_tensor(Tensor)
+arena_utils.test_getitem_int(Tensor)
+arena_utils.test_getitem_tuple(Tensor)
+arena_utils.test_getitem_integer_array(Tensor)
+arena_utils.test_getitem_integer_tensor(Tensor)
 
 # %%
 add = wrap_forward_fn(np.add)
@@ -815,9 +813,9 @@ BACK_FUNCS.add_back_func(np.subtract, 1, lambda grad_out, out, x, y: unbroadcast
 BACK_FUNCS.add_back_func(np.true_divide, 0, lambda grad_out, out, x, y: unbroadcast(grad_out / y, x))
 BACK_FUNCS.add_back_func(np.true_divide, 1, lambda grad_out, out, x, y: unbroadcast(- grad_out * x / y / y, y))
 
-utils_w0d5.test_add_broadcasted(Tensor)
-utils_w0d5.test_subtract_broadcasted(Tensor)
-utils_w0d5.test_truedivide_broadcasted(Tensor)
+arena_utils.test_add_broadcasted(Tensor)
+arena_utils.test_subtract_broadcasted(Tensor)
+arena_utils.test_truedivide_broadcasted(Tensor)
 # %%
 def add_(x: Tensor, other: Tensor, alpha: float = 1.0) -> Tensor:
     '''Like torch.add_. Compute x += other * alpha in-place and return tensor.'''
@@ -877,14 +875,14 @@ maximum = wrap_forward_fn(np.maximum)
 BACK_FUNCS.add_back_func(np.maximum, 0, maximum_back0)
 BACK_FUNCS.add_back_func(np.maximum, 1, maximum_back1)
 
-utils_w0d5.test_maximum(Tensor)
-utils_w0d5.test_maximum_broadcasted(Tensor)
+arena_utils.test_maximum(Tensor)
+arena_utils.test_maximum_broadcasted(Tensor)
 # %%
 def relu(x: Tensor) -> Tensor:
     '''Like torch.nn.function.relu(x, inplace=False).'''
     return maximum(0, x)
 
-utils_w0d5.test_relu(Tensor)
+arena_utils.test_relu(Tensor)
 # %%
 def _matmul2d(x: Arr, y: Arr) -> Arr:
     '''Matrix multiply restricted to the case where both inputs are exactly 2D.'''
@@ -901,7 +899,7 @@ matmul = wrap_forward_fn(_matmul2d)
 BACK_FUNCS.add_back_func(_matmul2d, 0, matmul2d_back0)
 BACK_FUNCS.add_back_func(_matmul2d, 1, matmul2d_back1)
 
-utils_w0d5.test_matmul2d(Tensor)
+arena_utils.test_matmul2d(Tensor)
 # %%
 class Parameter(Tensor):
     def __init__(self, tensor: Tensor, requires_grad=True):
@@ -1041,9 +1039,9 @@ class Linear(Module):
     def extra_repr(self) -> str:
         pass
 
-utils_w0d2.test_linear_forward(Linear)
-#utils_w0d2.test_linear_parameters(Linear)
-utils_w0d2.test_linear_no_bias(Linear)
+arena_utils.test_linear_forward(Linear)
+#arena_utils.test_linear_parameters(Linear)
+arena_utils.test_linear_no_bias(Linear)
 # %%
 class MLP(Module):
     def __init__(self):
@@ -1071,7 +1069,7 @@ def cross_entropy(logits: Tensor, true_labels: Tensor) -> Tensor:
     probs = exp(true_logits) / exp(logits).sum(1)
     return -log(probs)
 
-utils_w0d5.test_cross_entropy(Tensor, cross_entropy)
+arena_utils.test_cross_entropy(Tensor, cross_entropy)
 # %%
 class NoGrad:
     '''Context manager that disables grad inside the block. Like torch.no_grad.'''
@@ -1089,8 +1087,8 @@ class NoGrad:
         global grad_tracking_enabled
         grad_tracking_enabled = self.was_enabled
 # %%
-(train_loader, test_loader) = utils_w0d5.get_mnist(20)
-utils_w0d5.visualize(train_loader)
+(train_loader, test_loader) = arena_utils.get_mnist(20)
+arena_utils.visualize(train_loader)
 
 class SGD:
     def __init__(self, params: Iterable[Parameter], lr: float):

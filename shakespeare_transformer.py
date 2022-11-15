@@ -1,23 +1,22 @@
 # %%
-import torch as t
-from torch.utils.data import Dataset
-from torch.utils.data import DataLoader
-import transformer_replication
-from typing import Optional,Union
-import re
-import requests
-import torch.nn as nn
-from typing import Union, Optional
-from einops import rearrange
-from tqdm.notebook import tqdm_notebook
-import time
-import wandb
-import sampling
-from enum import Enum
-import wandb
 import os
-import glob
-import yaml
+import re
+import time
+from enum import Enum
+from typing import Optional, Union
+
+import requests
+import torch as t
+import torch.nn as nn
+from einops import rearrange
+from torch.utils.data import DataLoader, Dataset
+from tqdm.notebook import tqdm_notebook
+
+import sampling
+import transformer_replication
+import utils
+import wandb
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # %%
 class WordsDataset(Dataset):
@@ -211,34 +210,12 @@ sweep_config = {
 sweep_id = wandb.sweep(sweep=sweep_config, project='shakespeare')
 wandb.agent(sweep_id=sweep_id, function=train, count=1)
 # %%
-def load_model(run_id):
-    root = '/Users/m/Documents/arena/wandb/'
-    model_path = glob.glob(
-        f'{root}/run-*-{run_id}/files/model_state_dict.pt'
-    )[0]
-    yaml_path = glob.glob(
-        f'{root}/run-*-{run_id}/files/config.yaml'
-    )[0]
-    with open(yaml_path, 'r') as f:
-        yaml_cfg = yaml.safe_load(f)
 
-    base_config = transformer_replication.TransformerConfig(
-        num_layers=yaml_cfg['num_layers']['value'],
-        num_heads=yaml_cfg['num_heads']['value'],
-        vocab_size=len(shakespeare.vocab),
-        hidden_size=yaml_cfg['hidden_size']['value'],
-        max_seq_len=yaml_cfg['max_seq_len']['value'],
-        dropout=yaml_cfg['dropout']['value'],
-    )
-    model = transformer_replication.DecoderOnlyTransformer(base_config)
-    state_dict = t.load(
-        model_path
-    )
-    model.load_state_dict(state_dict)
-    return model
 #%%
-model = load_model('vlb9iauk') #refmccyi') #3kp6zgq0 #'582bmtai' #'3fhf5zbw'
 shakespeare = Data.from_file('data/shakespeare.txt', excerpt=Excerpt.SHORT_PLAYS)
+model = utils.load_transformer('vlb9iauk', transformer_replication.DecoderOnlyTransformer, vocab_size=len(shakespeare.vocab)) #refmccyi') #3kp6zgq0 #'582bmtai' #'3fhf5zbw'
 shakespeare.model_max_length = 40
 text_output = sampling.sample_tokens(model, shakespeare, ' I speak of love ', max_tokens_generated=400, temperature=1.6, top_k=15)
 print(text_output)
+
+# %%

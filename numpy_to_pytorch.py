@@ -1,9 +1,10 @@
 #%%
 import numpy as np
-from fancy_einsum import einsum
-import utils_w0d1
 import torch
+from fancy_einsum import einsum
 from torch import nn
+
+import arena_utils
 
 NUM_FREQUENCIES = 2
 TARGET_FUNC = lambda x: 1 * (x > 1)
@@ -40,7 +41,7 @@ for step in range(TOTAL_STEPS):
     A_n -= LEARNING_RATE * grad_A_n
     B_n -= LEARNING_RATE * grad_B_n
    
-utils_w0d1.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
+arena_utils.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
 # %%
 
 x = torch.linspace(-torch.pi, torch.pi, 2000)
@@ -73,7 +74,7 @@ for step in range(TOTAL_STEPS):
     A_n -= LEARNING_RATE * grad_A_n
     B_n -= LEARNING_RATE * grad_B_n
 
-utils_w0d1.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
+arena_utils.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
 # %%
 x = torch.linspace(-torch.pi, torch.pi, 2000)
 y = TARGET_FUNC(x)
@@ -105,7 +106,7 @@ for step in range(TOTAL_STEPS):
         A_n.grad = None
         B_n.grad = None
 
-utils_w0d1.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
+arena_utils.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
 # %% [markdown]
 # Models
 # %%
@@ -129,7 +130,7 @@ for step in range(TOTAL_STEPS):
             param -= LEARNING_RATE * param.grad
     model.zero_grad()
 
-utils_w0d1.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
+arena_utils.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
 # %%
 x = torch.linspace(-torch.pi, torch.pi, 2000)
 y = TARGET_FUNC(x) 
@@ -149,5 +150,5 @@ for step in range(TOTAL_STEPS):
     optimizer.step()
     model.zero_grad()
 
-utils_w0d1.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
+arena_utils.visualise_fourier_coeff_convergence(x, y, y_pred_list, coeffs_list)
 # %%

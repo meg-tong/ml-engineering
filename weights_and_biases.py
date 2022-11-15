@@ -1,20 +1,18 @@
 # %% 
-import torch as t
-from torch import nn
-from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
-from fancy_einsum import einsum
-from typing import Union, Optional, Callable, Tuple
-import numpy as np
-from einops import rearrange
-from tqdm.notebook import tqdm_notebook
-import plotly.express as px
-import plotly.graph_objs as go
-from plotly.subplots import make_subplots
 import time
-import wandb
-import utils_w0d4
+
+import torch as t
+from einops import rearrange
+from fancy_einsum import einsum
+from plotly.subplots import make_subplots
+from torch import nn
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+from tqdm.notebook import tqdm_notebook
+
+import arena_utils
 import resnet_replication
+import wandb
 
 device = "cuda" if t.cuda.is_available() else "cpu"
 # %%
@@ -29,7 +27,7 @@ transform = transforms.Compose([
 trainset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
 testset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 
-utils_w0d4.show_cifar_images(trainset, rows=3, cols=5)
+arena_utils.show_cifar_images(trainset, rows=3, cols=5)
 # %%
 def train() -> None:
 
@@ -97,18 +95,18 @@ def train() -> None:
     wandb.save(filename)
 
 sweep_config = {
-    'method': 'random',
-    'name': 'w0d4_resnet_sweep_2',
+    'method': 'bayes',
+    'name': 'w0d4_resnet_sweep_10',
     'metric': {'name': 'test_accuracy', 'goal': 'maximize'},
     'parameters': 
     {
-        'batch_size': {'values': [64, 128, 256]},
-        'epochs': {'min': 1, 'max': 3},
-        'lr': {'max': 0.1, 'min': 0.0001, 'distribution': 'log_uniform_values'}
+        'batch_size': {'values': [32, 64, 128, 256]},
+        'epochs': {'values': [2]},
+        'lr': {'max': 0.003, 'min': 0.00005, 'distribution': 'log_uniform_values'}
      }
 }
 
 sweep_id = wandb.sweep(sweep=sweep_config, project='w0d4_resnet')
 
-wandb.agent(sweep_id=sweep_id, function=train, count=2)
+wandb.agent(sweep_id=sweep_id, function=train, count=40)
 # %%

@@ -1,15 +1,18 @@
 #%% 
-import transformers
+from typing import List, Optional
+
 import torch as t
-from torch import nn
-from typing import Optional, List
-import transformer_replication
-import attention_replication
-from fancy_einsum import einsum
-import utils_w1d4
-import gpt2_replication
+import transformers
 from einops import repeat
-import sampling
+from fancy_einsum import einsum
+from torch import nn
+
+import arena_utils
+import attention_replication
+import gpt2_replication
+import transformer_replication
+
+
 # %%
 class BiasLayer(nn.Module):
     def __init__(self, length: int):
@@ -127,14 +130,13 @@ def make_additive_attention_mask(one_zero_attention_mask: t.Tensor, big_negative
     return  t.where(expanded_one_zero_attention_mask.bool(), 0, big_negative_number)
 
 if __name__ == "__main__":
-    utils_w1d4.test_make_additive_attention_mask(make_additive_attention_mask)
+    arena_utils.test_make_additive_attention_mask(make_additive_attention_mask)
 
 
 class BERTClassifier(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.bert_common = BERTCommon(config)
-        self.token_embedding_bias = BiasLayer(config.vocab_size)
         self.dropout = nn.Dropout(config.dropout)
         self.linear_sentiment = nn.Linear(config.hidden_size, 2)
         self.linear_stars = nn.Linear(config.hidden_size, 1)
@@ -163,7 +165,7 @@ config = transformer_replication.TransformerConfig(
 
 my_bert = BertLanguageModel(config)
 my_bert = gpt2_replication.copy_weights(my_bert, bert, gpt2=False)
-#utils_w1d4.print_param_count(my_bert, bert, use_state_dict=False)
+#arena_utils.print_param_count(my_bert, bert, use_state_dict=False)
 
 def predict(model, tokenizer, text: str, k=15) -> List[List[str]]:
     '''

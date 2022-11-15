@@ -1,19 +1,19 @@
 #%% 
-import transformers
+import time
+from typing import Callable, List, Union
+
 import torch as t
 import torch.nn as nn
-import utils_w1d1
-from typing import Union, List
+import transformers
+from einops import rearrange
 from fancy_einsum import einsum
-import torch as t
 from torch import nn
 from torch.utils.data import DataLoader
-from fancy_einsum import einsum
-from typing import Union, Callable
-from einops import rearrange
 from tqdm.notebook import tqdm_notebook
-import time
+
+import arena_utils
 import wandb
+
 # %%
 tokenizer = transformers.AutoTokenizer.from_pretrained("gpt2")
 if __name__ == "__main__":
@@ -42,7 +42,7 @@ class Embedding(nn.Module):
         return f"{self.num_embeddings}, {self.embedding_dim}"
 
 if __name__ == "__main__":
-    utils_w1d1.test_embedding(Embedding)
+    arena_utils.test_embedding(Embedding)
 # %%
 #TODO positional encoding
 class PositionalEncoding(nn.Module):
@@ -94,13 +94,14 @@ class LayerNorm(nn.Module):
         pass
     
 if __name__ == "__main__":
-    utils_w1d1.test_layernorm_mean_1d(LayerNorm)
-    utils_w1d1.test_layernorm_mean_2d(LayerNorm)
-    utils_w1d1.test_layernorm_std(LayerNorm)
-    utils_w1d1.test_layernorm_exact(LayerNorm)
-    utils_w1d1.test_layernorm_backward(LayerNorm)
+    arena_utils.test_layernorm_mean_1d(LayerNorm)
+    arena_utils.test_layernorm_mean_2d(LayerNorm)
+    arena_utils.test_layernorm_std(LayerNorm)
+    arena_utils.test_layernorm_exact(LayerNorm)
+    arena_utils.test_layernorm_backward(LayerNorm)
 # %%
 from dataclasses import dataclass
+
 
 @dataclass(frozen=True)
 class TransformerConfig:
@@ -115,6 +116,7 @@ class TransformerConfig:
     layer_norm_epsilon: float = 1e-05
 # %%
 import attention_replication
+
 
 class MLP(nn.Module):
     def __init__(self, config: TransformerConfig):
@@ -174,8 +176,8 @@ class DecoderOnlyTransformer(nn.Module):
         return x
 
 # %%
-from torch.utils.data import Dataset
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
+
 
 class CustomTextDataset(Dataset):
     def __init__(self, texts, labels):
@@ -199,6 +201,7 @@ class CustomTextDataset(Dataset):
 
 # %%
 import wandb
+
 device = t.device('cpu')
 def train():
 

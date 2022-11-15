@@ -1,15 +1,16 @@
 # %%
+import typing
+from typing import Optional
+
+import numpy as np
 import torch as t
 import torch.nn as nn
 from einops import repeat
 from fancy_einsum import einsum
-import numpy as np
-import typing
-from typing import Optional
 
-import importlib
-import utils_w0d2
-import utils_w0d3
+import arena_utils
+
+
 # %%
 def conv1d_minimal(x: t.Tensor, weights: t.Tensor) -> t.Tensor:
     '''Like torch's conv1d using bias=False and all other keyword arguments left at their default values.
@@ -28,7 +29,7 @@ def conv1d_minimal(x: t.Tensor, weights: t.Tensor) -> t.Tensor:
 
     return einsum('b in_ch kernel_w new_width, o_ch in_ch kernel_w -> b o_ch new_width', x_exp, weights)
 
-utils_w0d2.test_conv1d_minimal(conv1d_minimal)
+arena_utils.test_conv1d_minimal(conv1d_minimal)
 # %%
 def conv2d_minimal(x: t.Tensor, weights: t.Tensor) -> t.Tensor:
     '''Like torch's conv2d using bias=False and all other keyword arguments left at their default values.
@@ -47,7 +48,7 @@ def conv2d_minimal(x: t.Tensor, weights: t.Tensor) -> t.Tensor:
 
     return einsum('b in_ch kernel_h h kernel_w w, o_ch in_ch kernel_h kernel_w -> b o_ch h w', x_exp, weights)
 
-utils_w0d2.test_conv2d_minimal(conv2d_minimal)
+arena_utils.test_conv2d_minimal(conv2d_minimal)
 # %%
 def pad1d(x: t.Tensor, left: int, right: int, pad_value: float) -> t.Tensor:
     '''Return a new tensor with padding applied to the edges.
@@ -60,8 +61,8 @@ def pad1d(x: t.Tensor, left: int, right: int, pad_value: float) -> t.Tensor:
     padded_x[..., left:left + x.shape[2]] = x
     return padded_x
 
-utils_w0d2.test_pad1d(pad1d)
-utils_w0d2.test_pad1d_multi_channel(pad1d)
+arena_utils.test_pad1d(pad1d)
+arena_utils.test_pad1d_multi_channel(pad1d)
 # %%
 def pad2d(x: t.Tensor, left: int, right: int, top: int, bottom: int, pad_value: float) -> t.Tensor:
     '''Return a new tensor with padding applied to the edges.
@@ -74,8 +75,8 @@ def pad2d(x: t.Tensor, left: int, right: int, top: int, bottom: int, pad_value: 
     padded_x[..., top:top + x.shape[2], left:left + x.shape[3]] = x
     return padded_x
 
-utils_w0d2.test_pad2d(pad2d)
-utils_w0d2.test_pad2d_multi_channel(pad2d)
+arena_utils.test_pad2d(pad2d)
+arena_utils.test_pad2d_multi_channel(pad2d)
 
 # %%
 def conv1d(x, weights, stride: int = 1, padding: int = 0) -> t.Tensor:
@@ -97,7 +98,7 @@ def conv1d(x, weights, stride: int = 1, padding: int = 0) -> t.Tensor:
 
     return einsum('b in_ch kernel_w new_width, o_ch in_ch kernel_w -> b o_ch new_width', x_exp, weights)
 
-utils_w0d2.test_conv1d(conv1d)
+arena_utils.test_conv1d(conv1d)
 # %%
 IntOrPair = typing.Union[int, typing.Tuple[int, int]]
 Pair = typing.Tuple[int, int]
@@ -135,7 +136,7 @@ def conv2d(x, weights, stride: IntOrPair = 1, padding: IntOrPair = 0) -> t.Tenso
 
     return einsum('b in_ch kernel_h h kernel_w w, o_ch in_ch kernel_h kernel_w -> b o_ch h w', x_exp, weights)
 
-utils_w0d2.test_conv2d(conv2d)
+arena_utils.test_conv2d(conv2d)
 # %%
 def maxpool2d(x: t.Tensor, kernel_size: IntOrPair, stride: Optional[IntOrPair] = None, padding: IntOrPair = 0
 ) -> t.Tensor:
@@ -159,7 +160,7 @@ def maxpool2d(x: t.Tensor, kernel_size: IntOrPair, stride: Optional[IntOrPair] =
     )
     return t.amax(x_exp, dim=(2, 4))
 
-utils_w0d2.test_maxpool2d(maxpool2d)
+arena_utils.test_maxpool2d(maxpool2d)
 # %%
 class MaxPool2d(nn.Module):
     def __init__(self, kernel_size: IntOrPair, stride: Optional[IntOrPair] = None, padding: IntOrPair = 1):
@@ -176,14 +177,14 @@ class MaxPool2d(nn.Module):
         '''Add additional information to the string representation of this class.'''
         return f"kernel_size {self.kernel_size}, stride {self.stride}, padding {self.padding}"
 
-utils_w0d2.test_maxpool2d_module(MaxPool2d)
+arena_utils.test_maxpool2d_module(MaxPool2d)
 m = MaxPool2d(kernel_size=3, stride=2, padding=1)
 # %%
 class ReLU(nn.Module):
     def forward(self, x: t.Tensor) -> t.Tensor:
         return t.max(x.new_full(x.shape, 0.0), x)
 
-utils_w0d2.test_relu(ReLU)
+#arena_utils.test_relu(ReLU)
 # %%
 class Flatten(nn.Module):
     def __init__(self, start_dim: int = 1, end_dim: int = -1) -> None:
@@ -204,7 +205,7 @@ class Flatten(nn.Module):
     def extra_repr(self) -> str:
         return f"start_dim {self.start_dim}, end_dim {self.end_dim}"
 
-utils_w0d2.test_flatten(Flatten)
+arena_utils.test_flatten(Flatten)
 # %%
 class Linear(nn.Module):
     def __init__(self, in_features: int, out_features: int, bias=True):
@@ -230,9 +231,9 @@ class Linear(nn.Module):
     def extra_repr(self) -> str:
         return f"weight {self.weight}, bias {self.bias}"
 
-utils_w0d2.test_linear_forward(Linear)
-utils_w0d2.test_linear_parameters(Linear)
-utils_w0d2.test_linear_no_bias(Linear)
+arena_utils.test_linear_forward(Linear)
+arena_utils.test_linear_parameters(Linear)
+arena_utils.test_linear_no_bias(Linear)
 # %%
 class Conv2d(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: IntOrPair, stride: IntOrPair = 1, padding: IntOrPair = 0):
@@ -258,7 +259,7 @@ class Conv2d(nn.Module):
     def extra_repr(self) -> str:
         return f"weight {self.weight}"
 
-utils_w0d2.test_conv2d_module(Conv2d)
+arena_utils.test_conv2d_module(Conv2d)
 # %%
 class BatchNorm2d(nn.Module):
     running_mean: t.Tensor         # shape: (num_features,)
@@ -316,9 +317,9 @@ class BatchNorm2d(nn.Module):
     def extra_repr(self) -> str:
         return f'weight={self.weight} bias={self.bias} mu={self.running_mean} var={self.running_var}'
 
-utils_w0d3.test_batchnorm2d_module(BatchNorm2d)
-utils_w0d3.test_batchnorm2d_forward(BatchNorm2d)
-utils_w0d3.test_batchnorm2d_running_mean(BatchNorm2d)
+arena_utils.test_batchnorm2d_module(BatchNorm2d)
+arena_utils.test_batchnorm2d_forward(BatchNorm2d)
+arena_utils.test_batchnorm2d_running_mean(BatchNorm2d)
 
 # %%
 class AveragePool(nn.Module):
