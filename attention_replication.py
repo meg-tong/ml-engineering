@@ -103,9 +103,9 @@ def multihead_masked_attention(Q: t.Tensor, K: t.Tensor, V: t.Tensor, num_heads:
         q_index = repeat(t.arange(0, seq_Q), 'seq_Q -> batches nheads seq_Q seq_K', batches=batches, seq_K=seq_K, nheads=num_heads)
         k_index = repeat(t.arange(0, seq_K), 'seq_K -> batches nheads seq_Q seq_K', batches=batches, seq_Q=seq_Q, nheads=num_heads)
         mask = k_index <= q_index
+        masked_attention_scores = t.where(mask, attention_scores, -t.inf)
     else:
-        mask = additive_attention_mask
-    masked_attention_scores = t.where(mask, attention_scores, -t.inf)
+        masked_attention_scores = additive_attention_mask
     attention_probabilities = nn.functional.softmax(masked_attention_scores / np.sqrt(head_size), dim=-1)
     attention_values = einsum('batches nheads seq_Q seq_K, batches nheads seq_K head_size -> batches seq_Q nheads head_size', attention_probabilities, new_V)
     return rearrange(attention_values, 'batches seq_Q nheads head_size -> batches seq_Q (nheads head_size)')

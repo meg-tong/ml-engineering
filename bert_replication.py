@@ -89,7 +89,7 @@ class BERTCommon(nn.Module):
         x = self.layer_norm(x)
         x = self.dropout(x)
         for block in self.blocks:
-            x = block(x, make_additive_attention_mask(one_zero_attention_mask)) if self.training and one_zero_attention_mask is not None else block(x)
+            x = block(x, make_additive_attention_mask(one_zero_attention_mask)) if one_zero_attention_mask is not None else block(x) # self.training??
         return x
 
 class BertLanguageModel(nn.Module):
@@ -139,11 +139,13 @@ class BERTClassifier(nn.Module):
         self.linear_sentiment = nn.Linear(config.hidden_size, 2)
         self.linear_stars = nn.Linear(config.hidden_size, 1)
 
-    def forward(self, x: t.Tensor, one_zero_attention_mask: Optional[t.Tensor] = None, token_type_ids: Optional[t.Tensor] = None, sentiment=True):
+    def forward(self, x: t.Tensor, one_zero_attention_mask: Optional[t.Tensor] = None, token_type_ids: Optional[t.Tensor] = None):
         x = self.bert_common(x, one_zero_attention_mask, token_type_ids)
         x = x[:, 0, :]
         x = self.dropout(x)
-        return self.linear_sentiment(x), self.linear_stars(x)
+        sentiment = self.linear_sentiment(x)
+        stars = 5 * self.linear_stars(x) + 5
+        return sentiment, stars
 
 #%%
 bert = transformers.BertForMaskedLM.from_pretrained("bert-base-cased")
@@ -172,8 +174,6 @@ def predict(model, tokenizer, text: str, k=15) -> List[List[str]]:
 
     input_ids = t.tensor(tokenizer.encode(text), dtype=t.int64, device=device).unsqueeze(0)
 
-    #one_zero_attention_mask = t.where(input_ids == 0, 1, 0)
-    #token_type_ids = t.where(input_ids == 102, 1, 0)
     prediction = []
     with t.inference_mode():
         output = model(input_ids)
@@ -192,11 +192,11 @@ def test_bert_prediction(predict, model, tokenizer):
     predictions = predict(model, tokenizer, text)
     print(f"Prompt: {text}")
     print("Model predicted: \n", "\n".join(map(str, predictions)))
-    #assert "Washington" in predictions[0]
-    #assert "Bush" in predictions[0]
-    print()
+    assert "Washington" in predictions[0]
+    assert "Bush" in predictions[0]
 
-test_bert_prediction(predict, bert, tokenizer)
-test_bert_prediction(predict, my_bert, tokenizer)
+if __name__ == "__main__":
+    test_bert_prediction(predict, bert, tokenizer)
+    test_bert_prediction(predict, my_bert, tokenizer)
 
 # %%
