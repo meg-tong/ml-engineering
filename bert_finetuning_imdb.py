@@ -5,7 +5,7 @@ import random
 import tarfile
 import time
 from dataclasses import dataclass
-from typing import List, Union
+from typing import List, Union, Optional
 
 import pandas as pd
 import requests
@@ -107,6 +107,24 @@ test_data = to_dataset(tokenizer, [r for r in reviews if r.split == "test"], tes
 t.save((train_data, test_data), SAVED_TOKENS_PATH)
 # %%
 
+class BERTIMDBClassifier(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.bert_common = bert_replication.BERTCommon(config)
+        self.token_embedding_bias = bert_replication.BiasLayer(config.vocab_size) # Need to leave this here to import previous models
+        self.dropout = nn.Dropout(config.dropout)
+        self.linear_sentiment = nn.Linear(config.hidden_size, 2)
+        self.linear_stars = nn.Linear(config.hidden_size, 1)
+
+    def forward(self, x: t.Tensor, one_zero_attention_mask: Optional[t.Tensor] = None, token_type_ids: Optional[t.Tensor] = None):
+        x = self.bert_common(x, one_zero_attention_mask, token_type_ids)
+        x = x[:, 0, :]
+        x = self.dropout(x)
+        sentiment = self.linear_sentiment(x)
+        stars = 5 * self.linear_stars(x) + 5
+        return sentiment, stars
+
+#%%
 def train():
 
     wandb.init()
@@ -124,7 +142,7 @@ def train():
     bert = transformers.BertForMaskedLM.from_pretrained("bert-base-cased")
     my_bert = bert_replication.BertLanguageModel(config)
     my_bert = gpt2_replication.copy_weights(my_bert, bert, gpt2=False)
-    my_bert_classifier = bert_replication.BERTIMDBClassifier(config)
+    my_bert_classifier = BERTIMDBClassifier(config)
     my_bert_classifier.bert_common = gpt2_replication.copy_weights(my_bert_classifier.bert_common, my_bert.bert_common, gpt2=False)
     #print(my_bert_classifier.bert_common.positional_embedding.weight[0][0], my_bert.bert_common.positional_embedding.weight[0][0])
     #assert t.testing.assert_close(my_bert_classifier.bert_common.token_embedding.weight[0][0], my_bert.bert_common.token_embedding.weight[0][0])
@@ -161,7 +179,7 @@ def train():
             sentiment_loss = sentiment_loss_fn(sentiment_pred, sentiment_labels.long())
             star_loss = star_loss_fn(star_pred.squeeze(), star_labels)
             loss = (1 - w) * sentiment_loss + w * star_loss
-            if verbose:
+            if verbose and examples_seen % 100 == 0:
                 # print(tokenizer.decode(input_ids[0]))
                 # print(attention_mask)
                 print("sentiment", sentiment_pred, sentiment_labels, sentiment_loss)
@@ -232,7 +250,7 @@ config = transformer_replication.TransformerConfig(
             dropout=0.1,
             layer_norm_epsilon=1e-12
         )
-model = utils.load_transformer('rkb6zszq', bert_replication.BERTIMDBClassifier, config) #1jr05uo4
+model = utils.load_transformer('rkb6zszq', BERTIMDBClassifier, config) #1jr05uo4
 total = 20
 
 count = 0
@@ -255,7 +273,7 @@ config = transformer_replication.TransformerConfig(
             dropout=0.1,
             layer_norm_epsilon=1e-12
         )
-model = utils.load_transformer('rkb6zszq', bert_replication.BERTIMDBClassifier, config) #92gukpcg
+model = utils.load_transformer('rkb6zszq', BERTIMDBClassifier, config) #92gukpcg
 total = 20
 tolerance = 2
 

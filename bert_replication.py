@@ -11,8 +11,6 @@ import arena_utils
 import attention_replication
 import gpt2_replication
 import transformer_replication
-
-
 # %%
 class BiasLayer(nn.Module):
     def __init__(self, length: int):
@@ -131,24 +129,6 @@ def make_additive_attention_mask(one_zero_attention_mask: t.Tensor, big_negative
 
 if __name__ == "__main__":
     arena_utils.test_make_additive_attention_mask(make_additive_attention_mask)
-
-
-class BERTIMDBClassifier(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.bert_common = BERTCommon(config)
-        self.token_embedding_bias = BiasLayer(config.vocab_size) # Need to leave this here to import previous models
-        self.dropout = nn.Dropout(config.dropout)
-        self.linear_sentiment = nn.Linear(config.hidden_size, 2)
-        self.linear_stars = nn.Linear(config.hidden_size, 1)
-
-    def forward(self, x: t.Tensor, one_zero_attention_mask: Optional[t.Tensor] = None, token_type_ids: Optional[t.Tensor] = None):
-        x = self.bert_common(x, one_zero_attention_mask, token_type_ids)
-        x = x[:, 0, :]
-        x = self.dropout(x)
-        sentiment = self.linear_sentiment(x)
-        stars = 5 * self.linear_stars(x) + 5
-        return sentiment, stars
 
 #%%
 bert = transformers.BertForMaskedLM.from_pretrained("bert-base-cased")
