@@ -1,25 +1,30 @@
 #%%
+import importlib
 import os
-import re
+import random
 import tarfile
+import time
 from dataclasses import dataclass
+from typing import Callable, List, Optional, Union
+
+import pandas as pd
+import plotly.express as px
 import requests
 import torch as t
 import transformers
-from torch.utils.data import TensorDataset, DataLoader
+from einops import rearrange
+from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
 from tqdm.auto import tqdm
-import plotly.express as px
-import pandas as pd
-from typing import Callable, Optional, List, Union
-import time
-import transformer_replication
+from tqdm.notebook import tqdm_notebook
+
 import bert_replication
 import gpt2_replication
-import random
-from torch import nn
-import random
-from einops import rearrange
-from tqdm.notebook import tqdm_notebook
+import transformer_replication
+import utils
+import wandb
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 #%%
 IMDB_URL = "https://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz"
 DATA_FOLDER = "./data/bert-imdb/"
@@ -75,8 +80,8 @@ df = pd.DataFrame(reviews)
 # TODO check lingua, ftfy
 # TODO better truncation, data cleaning
 # %%
-train_samples = 1000
-test_samples = 100
+train_samples = 1500
+test_samples = 150
 
 def to_dataset(tokenizer: Union[transformers.PreTrainedTokenizer, transformers.PreTrainedTokenizerFast], reviews: List[Review], size: int) -> TensorDataset:
     '''Tokenize the reviews (which should all belong to the same split) and bundle into a TensorDataset.
@@ -103,89 +108,144 @@ train_data = to_dataset(tokenizer, [r for r in reviews if r.split == "train"], t
 test_data = to_dataset(tokenizer, [r for r in reviews if r.split == "test"], test_samples)
 t.save((train_data, test_data), SAVED_TOKENS_PATH)
 # %%
-config = transformer_replication.TransformerConfig(
-        num_layers=12,
-        num_heads=12,
-        vocab_size=28996,
-        hidden_size=768,
-        max_seq_len=512,
-        dropout=0.1,
-        layer_norm_epsilon=1e-12
-    )
 
-bert = transformers.BertForMaskedLM.from_pretrained("bert-base-cased")
-my_bert = bert_replication.BertLanguageModel(config)
-my_bert = gpt2_replication.copy_weights(my_bert, bert, gpt2=False)
-my_bert_classifier = bert_replication.BERTClassifier(config)
-my_bert_classifier.bert_common = gpt2_replication.copy_weights(my_bert_classifier.bert_common, my_bert.bert_common, gpt2=False)
-#print(my_bert_classifier.bert_common.positional_embedding.weight[0][0], my_bert.bert_common.positional_embedding.weight[0][0])
-#assert t.testing.assert_close(my_bert_classifier.bert_common.token_embedding.weight[0][0], my_bert.bert_common.token_embedding.weight[0][0])
+def train():
 
-#%%
-epochs = 1
-batch_size = 16
-lr = 5e-5
+    wandb.init()
 
-verbose=False
+    config = transformer_replication.TransformerConfig(
+            num_layers=12,
+            num_heads=12,
+            vocab_size=28996,
+            hidden_size=768,
+            max_seq_len=512,
+            dropout=0.1,
+            layer_norm_epsilon=1e-12
+        )
 
-model = my_bert_classifier.to(device).train()
-optimizer = t.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
-sentiment_loss_fn = nn.CrossEntropyLoss()
+    bert = transformers.BertForMaskedLM.from_pretrained("bert-base-cased")
+    my_bert = bert_replication.BertLanguageModel(config)
+    my_bert = gpt2_replication.copy_weights(my_bert, bert, gpt2=False)
+    my_bert_classifier = bert_replication.BERTClassifier(config)
+    my_bert_classifier.bert_common = gpt2_replication.copy_weights(my_bert_classifier.bert_common, my_bert.bert_common, gpt2=False)
+    #print(my_bert_classifier.bert_common.positional_embedding.weight[0][0], my_bert.bert_common.positional_embedding.weight[0][0])
+    #assert t.testing.assert_close(my_bert_classifier.bert_common.token_embedding.weight[0][0], my_bert.bert_common.token_embedding.weight[0][0])
 
-examples_seen = 0
-start_time = time.time()
+    epochs = wandb.config.epochs
+    batch_size = wandb.config.batch_size
+    lr = wandb.config.lr
+    w = wandb.config.w
 
-trainloader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
-testloader = DataLoader(test_data, shuffle=True, batch_size=batch_size)
+    verbose=False
 
-for epoch in range(epochs):
-    progress_bar = tqdm_notebook(trainloader)
+    model = my_bert_classifier.to(device).train()
+    optimizer = t.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
+    sentiment_loss_fn = nn.CrossEntropyLoss()
+    star_loss_fn = nn.functional.l1_loss
 
-    for (input_ids, attention_mask, sentiment_labels, star_labels) in progress_bar:
-        input_ids = input_ids.to(device)
-        attention_mask = attention_mask.to(device)
-        sentiment_labels = sentiment_labels.to(device)
-        star_labels = star_labels.to(device)
-        optimizer.zero_grad()
-        sentiment_pred, star_pred = model(input_ids, attention_mask)
+    examples_seen = 0
+    start_time = time.time()
 
-        sentiment_loss = sentiment_loss_fn(sentiment_pred, sentiment_labels.long())
-        # star_loss = loss_fn(star_pred, star_labels)
-        loss = sentiment_loss #+ star_loss
-        if verbose:
-            # print(tokenizer.decode(input_ids[0]))
-            # print(attention_mask)
-            print(sentiment_pred, sentiment_labels)
-            # print(loss)
-        loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
-        print(f"Epoch = {epoch}, Loss = {loss.item():.4f}", f"Training accuracy {(sentiment_pred.argmax(-1) == sentiment_labels).sum().item()/batch_size:.0%}")
-        examples_seen += len(input_ids)
+    trainloader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
+    testloader = DataLoader(test_data, shuffle=True, batch_size=batch_size)
 
-    with t.inference_mode():
-        sentiment_accuracy = 0
-        star_accuracy = 0
-        total = 0
-        for (input_ids, attention_mask, sentiment_labels, star_labels) in tqdm_notebook(testloader):
+    for epoch in range(epochs):
+        progress_bar = tqdm_notebook(trainloader)
+
+        for (input_ids, attention_mask, sentiment_labels, star_labels) in progress_bar:
             input_ids = input_ids.to(device)
             attention_mask = attention_mask.to(device)
             sentiment_labels = sentiment_labels.to(device)
             star_labels = star_labels.to(device)
+            optimizer.zero_grad()
             sentiment_pred, star_pred = model(input_ids, attention_mask)
-            if total == 0:
-                print(sentiment_pred, sentiment_labels)
-            sentiment_accuracy += (sentiment_pred.argmax(-1) == sentiment_labels).sum().item()
-            star_accuracy += (star_pred.argmax(-1) == star_labels).sum().item()
-            total += sentiment_pred.size(0)
 
-        print("epoch", epoch, "test_sentiment_accuracy", sentiment_accuracy/total, "test_star_accuracy", star_accuracy/total)
+            sentiment_loss = sentiment_loss_fn(sentiment_pred, sentiment_labels.long())
+            star_loss = star_loss_fn(star_pred, star_labels)
+            loss = (1 - w) * sentiment_loss + w * star_loss
+            if verbose:
+                # print(tokenizer.decode(input_ids[0]))
+                # print(attention_mask)
+                print(sentiment_pred, sentiment_labels)
+                print(star_pred, star_labels)
+                # print(loss)
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            #print(f"Epoch = {epoch}, Loss = {loss.item():.4f}", f"Training accuracy {(sentiment_pred.argmax(-1) == sentiment_labels).sum().item()/batch_size:.0%}")
+            wandb.log({"train_loss": loss, "sentiment_loss": sentiment_loss, "star_loss": star_loss, "elapsed": time.time() - start_time, "train_sentiment_accuracy": (sentiment_pred.argmax(-1) == sentiment_labels).sum().item()/batch_size, "train_star_accuracy": (star_pred.argmax(-1) == star_labels).sum().item()/batch_size}, step=examples_seen)
+
+            examples_seen += len(input_ids)
+
+        with t.inference_mode():
+            sentiment_accuracy = 0
+            star_accuracy = 0
+            total = 0
+            for (input_ids, attention_mask, sentiment_labels, star_labels) in tqdm_notebook(testloader):
+                input_ids = input_ids.to(device)
+                attention_mask = attention_mask.to(device)
+                sentiment_labels = sentiment_labels.to(device)
+                star_labels = star_labels.to(device)
+                sentiment_pred, star_pred = model(input_ids, attention_mask)
+                if total == 0:
+                    print(sentiment_pred, sentiment_labels)
+                    print(star_pred, star_labels)
+                sentiment_accuracy += (sentiment_pred.argmax(-1) == sentiment_labels).sum().item()
+                star_accuracy += (star_pred.argmax(-1) == star_labels).sum().item()
+                total += sentiment_pred.size(0)
+            
+            wandb.log({"test_sentiment_accuracy": sentiment_accuracy/total, "test_star_accuracy": star_accuracy/total}, step=examples_seen)
+
+        filename = f"{wandb.run.dir}/model_state_dict.pt"
+        print(f"Saving model to: {filename}")
+        t.save(model.state_dict(), filename)
+        wandb.save(filename)
 
 #DONE: why are all labels 0? -> Need to shuffle reviews between pos/neg
 #DONE: Check a batch from the dataloader to see if data looks ok -> yes
 #DONE: Classification loss starts at log(2)
-#TODO: why are predictions the opposite way? -> do I need attention mask in test?
+#DONE: why are predictions the opposite way? -> do I need attention mask in test?
 #TODO: Check all params have requires_grad = True
 
 
+# %%
+device = t.device('cpu')
+sweep_config = {
+        'method': 'bayes',
+        'name': 'meg_bert_finetune',
+        'metric': {'name': 'train_loss', 'goal': 'minimize'},
+        'parameters': 
+        {
+            'batch_size': {'values': [16]},
+            'lr': {'values': [1e-5]}, #'lr': {'max': 6e-5, 'min': 1e-5, 'distribution': 'log_uniform_values'}
+            'weight_decay': {'values': [0.01]},
+            'epochs': {'values': [2]},
+            'w': {'values': [0.0]}
+        }
+    }
+sweep_id = wandb.sweep(sweep=sweep_config, project='meg_bert_finetune')
+wandb.agent(sweep_id=sweep_id, function=train, count=1)
+#%%
+config = transformer_replication.TransformerConfig(
+            num_layers=12,
+            num_heads=12,
+            vocab_size=28996,
+            hidden_size=768,
+            max_seq_len=512,
+            dropout=0.1,
+            layer_norm_epsilon=1e-12
+        )
+model = utils.load_transformer('1jr05uo4', bert_replication.BERTClassifier, config)
+total = 20
+
+count = 0
+for review in random.sample(reviews, total):
+    encoding = tokenizer(review.text, padding=True, max_length=512, truncation=True, return_tensors='pt')
+    sentiment, stars = model(encoding.input_ids, encoding.attention_mask)
+    actual = "pos" if review.is_positive else "neg"
+    predicted = "pos" if sentiment.argmax(-1).item() == 1 else "neg"
+    print("actual", actual, "-> predicted", predicted, "✅" if actual == predicted else "❌")
+    if actual == predicted:
+        count += 1
+print(f"Accuracy = {(count / total):.0%}")
 # %%
