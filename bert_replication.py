@@ -133,10 +133,11 @@ if __name__ == "__main__":
     arena_utils.test_make_additive_attention_mask(make_additive_attention_mask)
 
 
-class BERTClassifier(nn.Module):
+class BERTIMDBClassifier(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.bert_common = BERTCommon(config)
+        self.token_embedding_bias = BiasLayer(config.vocab_size) # Need to leave this here to import previous models
         self.dropout = nn.Dropout(config.dropout)
         self.linear_sentiment = nn.Linear(config.hidden_size, 2)
         self.linear_stars = nn.Linear(config.hidden_size, 1)
