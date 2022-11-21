@@ -2,9 +2,10 @@ import glob
 
 import torch as t
 import yaml
+import os
+import requests
 
 import transformer_replication
-
 
 def load_transformer(run_id, model_class, base_config: transformer_replication.TransformerConfig = None, vocab_size = None):
     root = '/Users/m/Documents/arena/wandb/'
@@ -34,3 +35,15 @@ def load_transformer(run_id, model_class, base_config: transformer_replication.T
     )
     model.load_state_dict(state_dict)
     return model
+
+def maybe_download(url: str, path: str) -> None:
+    '''
+    Download the file from url and save it to path. 
+    If path already exists, do nothing.
+    '''
+    if os.path.isfile(path):
+        return
+    response = requests.get(url, stream=True)
+    if response.status_code == 200:
+        with open(path, 'wb') as f:
+            f.write(response.raw.read())

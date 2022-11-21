@@ -1,5 +1,6 @@
 __pycache__
 wandb/*
+data/wikitext*
 data/cifar*
 data/bert-imdb*
 data/shakespeare.txt

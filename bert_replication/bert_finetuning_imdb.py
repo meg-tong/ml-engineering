@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import List, Union, Optional
 
 import pandas as pd
-import requests
 import torch as t
 import transformers
 from torch import nn
@@ -31,20 +30,8 @@ SAVED_TOKENS_PATH = os.path.join(DATA_FOLDER, "tokens.pt")
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 
-def maybe_download(url: str, path: str) -> None:
-    '''
-    Download the file from url and save it to path. 
-    If path already exists, do nothing.
-    '''
-    if os.path.isfile(path):
-        return
-    response = requests.get(url, stream=True)
-    if response.status_code == 200:
-        with open(path, 'wb') as f:
-            f.write(response.raw.read())
-
 os.makedirs(DATA_FOLDER, exist_ok=True)
-maybe_download(IMDB_URL, IMDB_PATH)
+utils.maybe_download(IMDB_URL, IMDB_PATH)
 #%%
 @dataclass(frozen=True)
 class Review:
