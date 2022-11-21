@@ -81,7 +81,7 @@ def tokenize_1d(tokenizer, lines: List[str], max_seq: int) -> t.Tensor:
 
 if MAIN:
     # max_seq = 128
-    # tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-cased")
+    tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-cased")
     # print("Tokenizing training text...")
     # train_data = tokenize_1d(tokenizer, train_text, max_seq)
     # print("Training data shape is: ", train_data.shape)
@@ -258,20 +258,22 @@ if MAIN:
 def bert_mlm_pretrain(model: bert_replication.BertLanguageModel, config_dict: dict, train_loader: DataLoader, verbose=False) -> None:
     '''Train using masked language modelling.'''
 
-    #wandb.init(project='meg_bert_mlm_pretrain', config=config_dict)
+    wandb.init(project='meg_bert_mlm_pretrain', config=config_dict)
 
     device = t.device('cuda' if t.cuda.is_available() else 'cpu')
 
     model = model.to(device).train()
     optimizer = make_optimizer(model, config_dict)
-    #lr_scheduler = t.optim.lr_scheduler.LambdaLR(optimizer, lr_for_step)
     loss_fn = cross_entropy_selected
     epochs = config_dict['epochs']
 
     trainloader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
     testloader = DataLoader(test_data, shuffle=True, batch_size=batch_size)
 
+    max_step = epochs * len(trainloader)
+
     examples_seen = 0
+    step = 0
     start_time = time.time()
 
     wandb.watch(model, criterion=loss_fn, log="all", log_freq=10, log_graph=True)
@@ -287,41 +289,50 @@ def bert_mlm_pretrain(model: bert_replication.BertLanguageModel, config_dict: di
             loss = loss_fn(x_pred, x.long(), was_selected)
             if verbose and examples_seen % 100 == 0:
                 #print(x.shape, x_pred.shape)
+                #print(len(optimizer.param_groups))
                 pass
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0) # small model and we want to solve a problem perfectly
+            current_lr = lr_for_step(step, max_step, config_dict['lr'], config_dict['warmup_step_frac'])
+            for group in optimizer.param_groups:
+                group['lr'] = current_lr
             optimizer.step()
-            train_accuracy = (x_pred.argmax(-1) == x).sum().item() / batch_size
+            train_accuracy = (x_pred.argmax(-1) == x).sum().item() / was_selected.sum() / batch_size
             #print(f"Epoch = {epoch}, Loss = {loss.item():.4f}, Training accuracy {train_accuracy:.0%}")
-            wandb.log({"train_loss": loss, "elapsed": time.time() - start_time, "train_accuracy": train_accuracy}, step=examples_seen)
-
+            wandb.log({"train_loss": loss, "train_accuracy": train_accuracy, "lr": current_lr, "elapsed": time.time() - start_time}, step=examples_seen)
+            step += 1
             examples_seen += len(x)
 
         with t.inference_mode():
             test_accuracy = 0
             total = 0
-            for (x, y) in tqdm_notebook(testloader):
+            for x in tqdm_notebook(testloader):
                 x = x.to(device)
                 model_input, was_selected = random_mask(x, config_dict['mask_token_id'], tokenizer.vocab_size)
                 x_pred = model(model_input)
                 if total == 0 and verbose:
                     pass
-                test_accuracy += (x_pred.argmax(-1) == x).sum().item()
+                test_accuracy += (x_pred.argmax(-1) == x).sum().item() / was_selected.sum()
                 total += x_pred.size(0)
             
             print(test_accuracy/total)
             wandb.log({"test_accuracy": test_accuracy/total}, step=examples_seen)
 
         filename = f"{wandb.run.dir}/model_state_dict.pt"
-        filename = "model_state_dict.pt"
         print(f"Saving model to: {filename}")
         t.save(model.state_dict(), filename)
         wandb.save(filename)
-
 
 if MAIN:
     model = bert_replication.BertLanguageModel(bert_config_tiny)
     num_params = sum((p.nelement() for p in model.parameters()))
     print("Number of model parameters: ", num_params)
     bert_mlm_pretrain(model, config_dict, train_loader, verbose=True)
+# %%
+if MAIN:
+    model = bert_replication.BertLanguageModel(bert_config_tiny)
+    model.load_state_dict(t.load(filename))
+    your_text = "The Answer to the Ultimate Question of Life, The Universe, and Everything is [MASK]."
+    predictions = bert_replication.predict(model, tokenizer, your_text)
+    print("Model predicted: \n", "\n".join(map(str, predictions)))
 # %%
