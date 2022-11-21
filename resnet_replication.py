@@ -10,7 +10,7 @@ import torchvision
 from PIL import Image
 
 import arena_utils
-import nn_replication
+from pytorch_replication import nn_replication
 
 
 #%%
