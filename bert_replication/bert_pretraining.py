@@ -6,21 +6,22 @@ import zipfile
 
 import torch as t
 import transformers
-from einops import rearrange, repeat
+from einops import rearrange
 from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import TensorDataset
-from tqdm import tqdm
+from tqdm.notebook import tqdm_notebook
+import time
 from typing import List, Tuple
-import collections
-import numpy as np
+import wandb
 
 sys.path.append("../")
-import importlib
-importlib.reload(arena_utils)
 import arena_utils
 import utils
+import transformer_replication
+import bert_replication
+import matplotlib.pyplot as plt
 
 #%%
 MAIN = __name__ == "__main__"
@@ -41,7 +42,6 @@ with open(path, "rb") as f:
     assert actual_hexdigest == expected_hexdigest[DATASET]
 
 print(f"Using dataset WikiText-{DATASET} - options are 2 and 103")
-tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-cased")
 
 z = zipfile.ZipFile(path)
 
@@ -80,16 +80,18 @@ def tokenize_1d(tokenizer, lines: List[str], max_seq: int) -> t.Tensor:
     return input_ids
 
 if MAIN:
-    max_seq = 128
-    print("Tokenizing training text...")
-    train_data = tokenize_1d(tokenizer, train_text, max_seq)
-    print("Training data shape is: ", train_data.shape)
-    print("Tokenizing validation text...")
-    val_data = tokenize_1d(tokenizer, val_text, max_seq)
-    print("Tokenizing test text...")
-    test_data = tokenize_1d(tokenizer, test_text, max_seq)
-    print("Saving tokens to: ", TOKENS_FILENAME)
-    t.save((train_data, val_data, test_data), TOKENS_FILENAME)
+    # max_seq = 128
+    # tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-cased")
+    # print("Tokenizing training text...")
+    # train_data = tokenize_1d(tokenizer, train_text, max_seq)
+    # print("Training data shape is: ", train_data.shape)
+    # print("Tokenizing validation text...")
+    # val_data = tokenize_1d(tokenizer, val_text, max_seq)
+    # print("Tokenizing test text...")
+    # test_data = tokenize_1d(tokenizer, test_text, max_seq)
+    # print("Saving tokens to: ", TOKENS_FILENAME)
+    # t.save((train_data, val_data, test_data), TOKENS_FILENAME)
+    train_data, val_data, test_data = t.load(TOKENS_FILENAME)
 # %%
 def random_mask(
     input_ids: t.Tensor, mask_token_id: int, vocab_size: int, select_frac=0.15, mask_frac=0.8, random_frac=0.1
@@ -119,7 +121,7 @@ def random_mask(
     return model_input, selection_mask
 
 if MAIN:
-    arena_utils.test_random_mask(random_mask, input_size=10000, max_seq=max_seq)
+    arena_utils.test_random_mask(random_mask, input_size=10000, max_seq=128)
 # %%
 def calculate_cross_entropy_unigram(data):
     freqs = t.bincount(data.flatten())
@@ -131,7 +133,7 @@ def calculate_cross_entropy_unigram(data):
 if MAIN:
     cross_entropy = calculate_cross_entropy_unigram(train_data)
     print(cross_entropy)
-# %%
+
 def cross_entropy_selected(pred: t.Tensor, target: t.Tensor, was_selected: t.Tensor) -> t.Tensor:
     '''
     pred: (batch, seq, vocab_size) - predictions from the model
@@ -145,7 +147,6 @@ def cross_entropy_selected(pred: t.Tensor, target: t.Tensor, was_selected: t.Ten
     target_flat = rearrange(target, 'b s -> (b s)')[was_selected_flat == 1]
 
     return F.cross_entropy(pred_flat, target_flat)
-    
 
 if MAIN:
     arena_utils.test_cross_entropy_selected(cross_entropy_selected, verbose=True)
@@ -157,3 +158,170 @@ if MAIN:
     (masked, was_selected) = random_mask(batch, tokenizer.mask_token_id, tokenizer.vocab_size)
     loss = cross_entropy_selected(pred, batch, was_selected).item()
     print(f"Random MLM loss on random tokens - does this make sense? {loss:.2f}")
+# %%
+tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-cased")
+
+hidden_size = 512
+bert_config_tiny = transformer_replication.TransformerConfig(
+    num_layers = 8,
+    num_heads = hidden_size // 64,
+    vocab_size = 28996,
+    hidden_size = hidden_size,
+    max_seq_len = 128,
+    dropout = 0.1,
+    layer_norm_epsilon = 1e-12
+)
+
+config_dict = dict(
+    lr=0.0002,
+    epochs=40,
+    batch_size=128,
+    weight_decay=0.01,
+    mask_token_id=tokenizer.mask_token_id,
+    warmup_step_frac=0.01,
+    eps=1e-06,
+    max_grad_norm=None,
+)
+
+(train_data, val_data, test_data) = t.load("../data/wikitext_tokens_2.pt")
+print("Training data size: ", train_data.shape)
+
+train_loader = DataLoader(TensorDataset(train_data), shuffle=True, batch_size=config_dict["batch_size"], drop_last=True)
+val_loader = DataLoader(TensorDataset(val_data), shuffle=True, batch_size=config_dict["batch_size"], drop_last=True)
+test_loader = DataLoader(TensorDataset(test_data), shuffle=True, batch_size=config_dict["batch_size"], drop_last=True)
+
+# %%
+def lr_for_step(step: int, max_step: int, max_lr: float, warmup_step_frac: float):
+    '''Return the learning rate for use at this step of training.'''
+    start_lr = max_lr / 10
+    warmup_step = int(warmup_step_frac * max_step)
+    if step < warmup_step:
+        return start_lr + (max_lr - start_lr) * (step / warmup_step)
+    else:
+        return max_lr - (max_lr - start_lr) * ((step - warmup_step) / (max_step - warmup_step))
+
+
+if MAIN:
+    max_step = int(len(train_loader) * config_dict["epochs"])
+    lrs = [
+        lr_for_step(step, max_step, max_lr=config_dict["lr"], warmup_step_frac=config_dict["warmup_step_frac"])
+        for step in range(max_step)
+    ]
+    plt.plot(lrs)
+# %%
+def make_optimizer(model: bert_replication.BertLanguageModel, config_dict: dict) -> t.optim.AdamW:
+    '''
+    Loop over model parameters and form two parameter groups:
+
+    - The first group includes the weights of each Linear layer and uses the weight decay in config_dict
+    - The second has all other parameters and uses weight decay of 0
+    '''
+    linear_group = []
+    other_group = []
+    for name, param in model.named_parameters():
+        if ".weight" in name and 'layer_norm' not in name and 'embedding' not in name:
+            linear_group.append(param)
+        else:
+            other_group.append(param)
+    return t.optim.AdamW([
+        {'params': linear_group, 'weight_decay': config_dict['weight_decay']}, 
+        {'params': other_group}], lr=config_dict['lr'], eps=config_dict['eps'])
+
+
+if MAIN:
+    test_config = transformer_replication.TransformerConfig(
+        num_layers = 3,
+        num_heads = 1,
+        vocab_size = 28996,
+        hidden_size = 1,
+        max_seq_len = 4,
+        dropout = 0.1,
+        layer_norm_epsilon = 1e-12,
+    )
+
+    optimizer_test_model = bert_replication.BertLanguageModel(test_config)
+    opt = make_optimizer(
+        optimizer_test_model, 
+        dict(weight_decay=0.1, lr=0.0001, eps=1e-06)
+    )
+    expected_num_with_weight_decay = test_config.num_layers * 6 + 1
+    wd_group = opt.param_groups[0]
+    actual = len(wd_group["params"])
+    assert (
+        actual == expected_num_with_weight_decay
+    ), f"Expected 6 linear weights per layer (4 attn, 2 MLP) plus the final lm_linear weight to have weight decay ({expected_num_with_weight_decay}), got {actual}"
+    all_params = set()
+    for group in opt.param_groups:
+        all_params.update(group["params"])
+    assert all_params == set(optimizer_test_model.parameters()), "Not all parameters were passed to optimizer!"
+# %%
+def bert_mlm_pretrain(model: bert_replication.BertLanguageModel, config_dict: dict, train_loader: DataLoader, verbose=False) -> None:
+    '''Train using masked language modelling.'''
+
+    #wandb.init(project='meg_bert_mlm_pretrain', config=config_dict)
+
+    device = t.device('cuda' if t.cuda.is_available() else 'cpu')
+
+    model = model.to(device).train()
+    optimizer = make_optimizer(model, config_dict)
+    #lr_scheduler = t.optim.lr_scheduler.LambdaLR(optimizer, lr_for_step)
+    loss_fn = cross_entropy_selected
+    epochs = config_dict['epochs']
+
+    trainloader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
+    testloader = DataLoader(test_data, shuffle=True, batch_size=batch_size)
+
+    examples_seen = 0
+    start_time = time.time()
+
+    wandb.watch(model, criterion=loss_fn, log="all", log_freq=10, log_graph=True)
+
+    for epoch in range(epochs):
+        progress_bar = tqdm_notebook(trainloader)
+
+        for x in progress_bar:
+            x = x.to(device)
+            model_input, was_selected = random_mask(x, config_dict['mask_token_id'], tokenizer.vocab_size)
+            optimizer.zero_grad()
+            x_pred = model(model_input)
+            loss = loss_fn(x_pred, x.long(), was_selected)
+            if verbose and examples_seen % 100 == 0:
+                #print(x.shape, x_pred.shape)
+                pass
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), 1.0) # small model and we want to solve a problem perfectly
+            optimizer.step()
+            train_accuracy = (x_pred.argmax(-1) == x).sum().item() / batch_size
+            #print(f"Epoch = {epoch}, Loss = {loss.item():.4f}, Training accuracy {train_accuracy:.0%}")
+            wandb.log({"train_loss": loss, "elapsed": time.time() - start_time, "train_accuracy": train_accuracy}, step=examples_seen)
+
+            examples_seen += len(x)
+
+        with t.inference_mode():
+            test_accuracy = 0
+            total = 0
+            for (x, y) in tqdm_notebook(testloader):
+                x = x.to(device)
+                model_input, was_selected = random_mask(x, config_dict['mask_token_id'], tokenizer.vocab_size)
+                x_pred = model(model_input)
+                if total == 0 and verbose:
+                    pass
+                test_accuracy += (x_pred.argmax(-1) == x).sum().item()
+                total += x_pred.size(0)
+            
+            print(test_accuracy/total)
+            wandb.log({"test_accuracy": test_accuracy/total}, step=examples_seen)
+
+        filename = f"{wandb.run.dir}/model_state_dict.pt"
+        filename = "model_state_dict.pt"
+        print(f"Saving model to: {filename}")
+        t.save(model.state_dict(), filename)
+        wandb.save(filename)
+
+
+if MAIN:
+    model = bert_replication.BertLanguageModel(bert_config_tiny)
+    num_params = sum((p.nelement() for p in model.parameters()))
+    print("Number of model parameters: ", num_params)
+    bert_mlm_pretrain(model, config_dict, train_loader, verbose=True)
+# %%

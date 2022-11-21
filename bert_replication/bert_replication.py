@@ -144,9 +144,10 @@ config = transformer_replication.TransformerConfig(
         layer_norm_epsilon=1e-12
     )
 
-my_bert = BertLanguageModel(config)
-my_bert = gpt2_replication.copy_weights(my_bert, bert, gpt2=False)
-#arena_utils.print_param_count(my_bert, bert, use_state_dict=False)
+if __name__ == "__main__":
+    my_bert = BertLanguageModel(config)
+    my_bert = gpt2_replication.copy_weights(my_bert, bert, gpt2=False)
+    #arena_utils.print_param_count(my_bert, bert, use_state_dict=False)
 
 def predict(model, tokenizer, text: str, k=15) -> List[List[str]]:
     '''
