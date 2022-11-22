@@ -66,8 +66,8 @@ def single_head_masked_attention(Q: t.Tensor, K: t.Tensor, V: t.Tensor) -> t.Ten
 
     q_index = repeat(t.arange(0, seq_Q), 'q -> b q k', b=batches, k=seq_K)
     k_index = repeat(t.arange(0, seq_K), 'k -> b q k', b=batches, q=seq_Q)
-    mask = k_index <= q_index
-    attention_scores = t.where(mask, attention_scores, -t.inf)
+    mask = (k_index <= q_index).to(Q.device)
+    attention_scores = t.where(mask, attention_scores, t.tensor(-np.inf).to(Q.device))
     attention_probabilities = nn.functional.softmax(attention_scores / np.sqrt(Q.shape[-1]), dim=2)
     attention_values = einsum('batches seq_Q seq_K, batches seq_K head_size -> batches seq_Q head_size', attention_probabilities, V)
     return attention_values
@@ -104,8 +104,8 @@ def multihead_masked_attention(Q: t.Tensor, K: t.Tensor, V: t.Tensor, num_heads:
     if additive_attention_mask is None:
         q_index = repeat(t.arange(0, seq_Q), 'seq_Q -> batches nheads seq_Q seq_K', batches=batches, seq_K=seq_K, nheads=num_heads)
         k_index = repeat(t.arange(0, seq_K), 'seq_K -> batches nheads seq_Q seq_K', batches=batches, seq_Q=seq_Q, nheads=num_heads)
-        mask = k_index <= q_index
-        masked_attention_scores = t.where(mask, attention_scores, -t.inf)
+        mask = (k_index <= q_index).to(Q.device)
+        masked_attention_scores = t.where(mask, attention_scores, t.tensor(-np.inf).to(Q.device))
     else:
         masked_attention_scores = additive_attention_mask
     attention_probabilities = nn.functional.softmax(masked_attention_scores / np.sqrt(head_size), dim=-1)

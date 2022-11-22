@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 #%%
 MAIN = __name__ == "__main__"
 DATA_FOLDER = "../data"
-DATASET = "2"
+DATASET = "103"
 BASE_URL = "https://s3.amazonaws.com/research.metamind.io/wikitext/"
 DATASETS = {"103": "wikitext-103-raw-v1.zip", "2": "wikitext-2-raw-v1.zip"}
 TOKENS_FILENAME = os.path.join(DATA_FOLDER, f"wikitext_tokens_{DATASET}.pt")
@@ -79,19 +79,46 @@ def tokenize_1d(tokenizer, lines: List[str], max_seq: int) -> t.Tensor:
 
     return input_ids
 
+def tokenize_1d_with_progress_bar(tokenizer, lines: List[str], max_seq: int, n_intervals: int = 200) -> t.Tensor:
+    input_ids = []
+    interval_len = len(lines) // (n_intervals - 1)
+    slices = [slice(i*interval_len, (i+1)*interval_len) for i in range(n_intervals)]
+    progress_bar = tqdm_notebook(slices)
+    for slice_ in progress_bar:
+        lines_tokenized = tokenizer(
+            lines[slice_], 
+            truncation=False, 
+            add_special_tokens=False, 
+            padding=False,
+            return_token_type_ids=False,
+            return_attention_mask=False,
+        )
+        input_ids.append(concat_lists(lines_tokenized["input_ids"]))
+
+    input_ids = concat_lists(input_ids)
+    n_to_truncate = len(input_ids) % max_seq
+    input_ids = t.tensor(input_ids[:-n_to_truncate]).to(t.int)
+
+    input_ids = rearrange(input_ids, "(b s) -> b s", s=max_seq)
+
+    return input_ids
+
 if MAIN:
-    # max_seq = 128
     tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-cased")
-    # print("Tokenizing training text...")
-    # train_data = tokenize_1d(tokenizer, train_text, max_seq)
-    # print("Training data shape is: ", train_data.shape)
-    # print("Tokenizing validation text...")
-    # val_data = tokenize_1d(tokenizer, val_text, max_seq)
-    # print("Tokenizing test text...")
-    # test_data = tokenize_1d(tokenizer, test_text, max_seq)
-    # print("Saving tokens to: ", TOKENS_FILENAME)
-    # t.save((train_data, val_data, test_data), TOKENS_FILENAME)
-    train_data, val_data, test_data = t.load(TOKENS_FILENAME)
+    if not os.path.exists(TOKENS_FILENAME):
+        max_seq = 128
+        print("Tokenizing training text...")
+        train_data = tokenize_1d_with_progress_bar(tokenizer, train_text, max_seq)
+        print("Training data shape is: ", train_data.shape)
+        print("Tokenizing validation text...")
+        val_data = tokenize_1d_with_progress_bar(tokenizer, val_text, max_seq)
+        print("Tokenizing test text...")
+        test_data = tokenize_1d_with_progress_bar(tokenizer, test_text, max_seq)
+        print("Saving tokens to: ", TOKENS_FILENAME)
+        t.save((train_data, val_data, test_data), TOKENS_FILENAME)
+    else:
+        print(f"Loading data from {TOKENS_FILENAME}")
+        train_data, val_data, test_data = t.load(TOKENS_FILENAME)
 # %%
 def random_mask(
     input_ids: t.Tensor, mask_token_id: int, vocab_size: int, select_frac=0.15, mask_frac=0.8, random_frac=0.1
@@ -105,15 +132,16 @@ def random_mask(
     batch_len, seq_len = input_ids.shape
 
     all_mask_token = t.full_like(input_ids, mask_token_id)
-    all_random_token = t.randint(low=0, high=vocab_size, size=input_ids.shape)
+    all_random_token = t.randint(low=0, high=vocab_size, size=input_ids.shape).to(input_ids.device)
+    all_idx = rearrange(t.randperm(batch_len * seq_len), '(b s) -> b s', b=batch_len).to(input_ids.device)
 
-    all_idx = rearrange(t.randperm(batch_len * seq_len), '(b s) -> b s', b=batch_len)
     selection_cutoff = int(select_frac * batch_len * seq_len)
     mask_cutoff = int(mask_frac * select_frac * batch_len * seq_len)
     random_cutoff = int(random_frac * select_frac * batch_len * seq_len)
+
     selection_mask = all_idx < selection_cutoff
     mask_mask = all_idx < mask_cutoff
-    random_mask = all_idx < mask_cutoff + random_cutoff
+    random_mask = (all_idx < mask_cutoff + random_cutoff).to(input_ids.device)
 
     model_input = t.where(random_mask, all_random_token, input_ids)
     model_input = t.where(mask_mask, all_mask_token, model_input)
@@ -331,7 +359,7 @@ if MAIN:
 # %%
 if MAIN:
     model = bert_replication.BertLanguageModel(bert_config_tiny)
-    model.load_state_dict(t.load(filename))
+    model.load_state_dict(t.load(f"{wandb.run.dir}/model_state_dict.pt"))
     your_text = "The Answer to the Ultimate Question of Life, The Universe, and Everything is [MASK]."
     predictions = bert_replication.predict(model, tokenizer, your_text)
     print("Model predicted: \n", "\n".join(map(str, predictions)))
