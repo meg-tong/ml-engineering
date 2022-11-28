@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw
 from tqdm import tqdm, trange
 from tqdm.auto import tqdm
 import solutions
+import plotly.express as px
 
 sys.path.append("../")
 import arena_utils
@@ -344,13 +345,15 @@ class EpsilonGreedy(Agent):
     def __init__(self, env: DiscreteEnviroGym, config: AgentConfig = defaultConfig, gamma: float = 0.99, seed: int = 0):
         super().__init__(env, config, gamma, seed)
         self.Q = np.full((self.num_states, self.num_actions), self.config.optimism, dtype='float32')
-        self.Q[self.env.unwrapped.env.terminal, :] = 0.0
+        
+        if isinstance(env.unwrapped, DiscreteEnviroGym):
+            self.Q[self.env.unwrapped.env.terminal, :] = 0.0
 
     def get_action(self, obs: ObsType) -> ActType:
         '''
         Selects an action using epsilon-greedy with respect to Q-value estimates
         '''
-        if self.rng.random() < self.config.epsilon:
+        if self.rng.random() <= self.config.epsilon:
             return self.rng.integers(self.num_actions)
         return self.Q[obs, :].argmax()
 
@@ -378,6 +381,64 @@ if MAIN:
         name = agent.name
         plt.plot(arena_utils.cummean(returns_norvig[name]), label=name)
     plt.legend()
-    plt.title(f"Avg. reward on {env_toy.spec.name}")
+    plt.title(f"Avg. reward on {env_norvig.spec.name}")
     plt.show()
+# %%
+def show_cliff_value(Q: Arr, title: Optional[str] = None):
+    '''
+    Displays the value of each state in CliffWalking-v0 given a Q-value table.
+    '''
+    V = Q.max(axis=-1).reshape(4, 12)
+    fig = px.imshow(V, text_auto=".2f", title=title)
+    fig.show()
+
+def show_cliff_policy(Q: Arr):
+    '''
+    Displays the greedy policy for CliffWalking-v0 given a Q-value table.
+    '''
+    pi = Q.argmax(axis=-1).reshape((4, 12))
+    d1 = {(3, 0): "green", (3, 11): "red"}
+    d2 = {(3, i): "black" for i in range(1, 11)}
+    objects = {**d1, **d2} 
+    img = Image.new(mode="RGB", size=(1200, 400), color="white")
+    draw = ImageDraw.Draw(img)
+    for x in range(0, img.width+1, 100):
+        draw.line([(x, 0), (x, img.height)], fill="black", width=4)
+    for y in range(0, img.height+1, 100):
+        draw.line([(0, y), (img.width, y)], fill="black", width=4)
+    for x in range(12):
+        for y in range(4):
+            draw.regular_polygon((50+x*100, 50+y*100, 20), 3, rotation=-int(90*pi[y][x]), fill="black")
+            if (y, x) in objects:
+                draw.regular_polygon((50+x*100, 50+y*100, 40), 4, fill=objects[(y, x)])
+    display(img.resize((600, 200)))
+
+# %%
+gym.make("CliffWalking-v0")
+
+if MAIN:
+    env_cliffwalking = gym.make("CliffWalking-v0")
+    config_cliffwalking = AgentConfig(epsilon=0.1)
+    n_runs = 5000
+    gamma = 1.0
+    seed = 1
+    args_cw = (env_cliffwalking, config_cliffwalking, gamma, seed)
+    agents_cliffwalking = [QLearning(*args_cw), SARSA(*args_cw)]
+    returns_cliffwalking = {}
+    for agent in agents_cliffwalking:
+        returns_cliffwalking[agent.name] = agent.train(n_runs)
+#%%
+if MAIN:
+    for agent in agents_cliffwalking:
+        name = agent.name
+        plt.plot(arena_utils.cummean(returns_cliffwalking[name]), label=name)
+    plt.legend()
+    plt.title(f"Avg. reward on {env_cliffwalking.spec.name}")
+    plt.show()
+    for agent in agents_cliffwalking:
+        print(agent.name)
+        show_cliff_value(agent.Q)
+    for agent in agents_cliffwalking:
+        print(agent.name)
+        show_cliff_policy(agent.Q)
 # %%
