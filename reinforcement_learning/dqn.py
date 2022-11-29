@@ -25,10 +25,7 @@ import wandb
 from numpy.random import Generator
 from torch.utils.tensorboard import SummaryWriter
 
-
-sys.path.append("../")
-import arena_utils
-import comparison
+import rl_utils
 
 MAIN = __name__ == "__main__"
 os.environ["SDL_VIDEODRIVER"] = "dummy"
@@ -133,14 +130,14 @@ class ReplayBuffer:
         return ReplayBufferSamples(obs, act, rew, don, nex_obs)
 
 if MAIN:
-    arena_utils.test_replay_buffer_single(ReplayBuffer)
-    arena_utils.test_replay_buffer_deterministic(ReplayBuffer)
-    arena_utils.test_replay_buffer_wraparound(ReplayBuffer)
+    rl_utils.test_replay_buffer_single(ReplayBuffer)
+    rl_utils.test_replay_buffer_deterministic(ReplayBuffer)
+    rl_utils.test_replay_buffer_wraparound(ReplayBuffer)
 
 # %%
 if MAIN:
     rb = ReplayBuffer(buffer_size=256, num_actions=2, observation_shape=(4,), num_environments=1, seed=0)
-    envs = gym.vector.SyncVectorEnv([arena_utils.make_env("CartPole-v1", 0, 0, False, "test")])
+    envs = gym.vector.SyncVectorEnv([rl_utils.make_env("CartPole-v1", 0, 0, False, "test")])
     obs = envs.reset()
     for i in range(512):
         actions = np.array([0])
@@ -170,7 +167,7 @@ if MAIN:
         linear_schedule(step, start_e=1.0, end_e=0.05, exploration_fraction=0.5, total_timesteps=500)
         for step in range(500)
     ]
-    arena_utils.test_linear_schedule(linear_schedule)
+    rl_utils.test_linear_schedule(linear_schedule)
 # %%
 def epsilon_greedy_policy(
     envs: gym.vector.SyncVectorEnv, q_network: QNetwork, rng: Generator, obs: t.Tensor, epsilon: float
@@ -189,7 +186,7 @@ def epsilon_greedy_policy(
     return q_network(obs).argmax(dim=-1).detach().numpy()
 
 if MAIN:
-    arena_utils.test_epsilon_greedy_policy(epsilon_greedy_policy)
+    rl_utils.test_epsilon_greedy_policy(epsilon_greedy_policy)
 # %%
 ObsType = np.ndarray
 ActType = int
@@ -352,7 +349,7 @@ class DQNArgs:
     wandb_project_name: str = ""
     wandb_entity: Optional[str] = None
     capture_video: bool = True
-    env_id: str = "CartPole-v1" # Probe1-v0 #CartPole-v1
+    env_id: str = "CartPole-v1" # Probe1-v0
     total_timesteps: int = 500000
     learning_rate: float = 0.00025
     buffer_size: int = 10000
@@ -426,7 +423,7 @@ def setup(args: DQNArgs) -> Tuple[str, SummaryWriter, np.random.Generator, t.dev
     t.backends.cudnn.deterministic = args.torch_deterministic
     rng = np.random.default_rng(args.seed)
     device = t.device("cuda" if t.cuda.is_available() and args.cuda else "cpu")
-    envs = gym.vector.SyncVectorEnv([arena_utils.make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
+    envs = gym.vector.SyncVectorEnv([rl_utils.make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, Discrete), "only discrete action space is supported"
     return (run_name, writer, rng, device, envs)
 
@@ -516,7 +513,7 @@ def train_dqn(args: DQNArgs):
         value = q_network(batch)
         print("Value: ", value)
         expected = t.tensor([[1.0]]).to(device)
-        t.testing.assert_close(value, expected, 0.0001)
+        t.testing.assert_close(value, expected, 0.0001, 0.0)
 
     envs.close()
     writer.close()

@@ -1,8 +1,6 @@
 #%%
 import os
-import sys
 from dataclasses import dataclass
-from gettext import find
 from typing import List, Optional, Tuple, Union
 
 import gym
@@ -10,19 +8,14 @@ import gym.envs.registration
 import gym.spaces
 import matplotlib.pyplot as plt
 import numpy as np
-from gym.utils import seeding
 from PIL import Image, ImageDraw
-from tqdm import tqdm, trange
-from tqdm.auto import tqdm
-import solutions
+from tqdm import trange
 import plotly.express as px
 
-sys.path.append("../")
-import arena_utils
+import rl_utils
 
 MAIN = __name__ == "__main__"
 Arr = np.ndarray
-MAIN = __name__ == "__main__"
 max_episode_steps = 1000
 IS_CI = os.getenv("IS_CI")
 N_RUNS = 200 if not IS_CI else 5
@@ -226,11 +219,6 @@ gym.envs.registration.register(
     kwargs={"env": Toy()}
 )
 # %%
-
-
-
-MAIN = __name__ == "__main__"
-
 @dataclass
 class Experience:
     '''A class for storing one piece of experience during an episode run'''
@@ -310,7 +298,7 @@ class Agent:
         all_rewards = []
         for seed in trange(n_runs):
             rewards = self.run_episode(seed)
-            all_rewards.append(arena_utils.sum_rewards(rewards, self.gamma))
+            all_rewards.append(rl_utils.sum_rewards(rewards, self.gamma))
         return all_rewards
 
 class Random(Agent):
@@ -320,18 +308,17 @@ class Random(Agent):
 class Cheater(Agent):
     def __init__(self, env: DiscreteEnviroGym, config: AgentConfig = defaultConfig, gamma=0.99, seed=0):
         super().__init__(env, config, gamma, seed)
-        self.pi = solutions.find_optimal_policy(env.unwrapped.env, gamma=gamma)
+        self.pi = rl_utils.find_optimal_policy(env.unwrapped.env, gamma=gamma)
 
     def get_action(self, obs):
         return self.pi[obs]
-
 
 if MAIN:
     env_toy = gym.make("ToyGym-v0")
     agents_toy = [Cheater(env_toy), Random(env_toy)]
     for agent in agents_toy:
         returns = agent.train(n_runs=100)
-        plt.plot(arena_utils.cummean(returns), label=agent.name)
+        plt.plot(rl_utils.cummean(returns), label=agent.name)
     plt.legend()
     plt.title(f"Avg. reward on {env_toy.spec.name}")
     plt.show()
@@ -379,7 +366,7 @@ if MAIN:
 if MAIN:
     for agent in agents_norvig:
         name = agent.name
-        plt.plot(arena_utils.cummean(returns_norvig[name]), label=name)
+        plt.plot(rl_utils.cummean(returns_norvig[name]), label=name)
     plt.legend()
     plt.title(f"Avg. reward on {env_norvig.spec.name}")
     plt.show()
@@ -423,7 +410,7 @@ if MAIN:
     gamma = 1.0
     seed = 1
     args_cw = (env_cliffwalking, config_cliffwalking, gamma, seed)
-    agents_cliffwalking = [QLearning(*args_cw), SARSA(*args_cw)]
+    agents_cliffwalking = [SARSA(*args_cw), QLearning(*args_cw)]
     returns_cliffwalking = {}
     for agent in agents_cliffwalking:
         returns_cliffwalking[agent.name] = agent.train(n_runs)
@@ -431,7 +418,7 @@ if MAIN:
 if MAIN:
     for agent in agents_cliffwalking:
         name = agent.name
-        plt.plot(arena_utils.cummean(returns_cliffwalking[name]), label=name)
+        plt.plot(rl_utils.cummean(returns_cliffwalking[name]), label=name)
     plt.legend()
     plt.title(f"Avg. reward on {env_cliffwalking.spec.name}")
     plt.show()
