@@ -15,11 +15,7 @@ import numpy as np
 import pandas as pd
 import torch as t
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from einops import rearrange
 from gym.spaces import Box, Discrete
-from matplotlib import pyplot as plt
 
 import wandb
 from numpy.random import Generator

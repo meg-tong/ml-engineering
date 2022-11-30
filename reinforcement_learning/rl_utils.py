@@ -1,20 +1,27 @@
+import argparse
+import os
 import random
 from dataclasses import asdict, dataclass
+from distutils.util import strtobool
 from typing import Any, List, Optional, Tuple, Union
 
 import gym
 import gym.envs.registration
 import gym.spaces
 import numpy as np
+import torch
 import torch as t
 import torch.nn as nn
+from fancy_einsum import einsum
 from numpy.random import Generator
 from PIL import Image, ImageDraw
-from fancy_einsum import einsum
+from torch import nn
+from torch.distributions.categorical import Categorical
+
+Arr = np.ndarray
 
 ObsType = int
 ActType = int
-Arr = np.ndarray
 
 class Environment:
     def __init__(self, num_states: int, num_actions: int, start=0, terminal=None):
@@ -406,6 +413,101 @@ def epsilon_greedy_policy(
         q_scores = q_network(obs)
         return q_scores.argmax(-1).detach().cpu().numpy()
 
+@dataclass
+class PPOArgs:
+    exp_name: str = os.path.basename(globals().get("__file__", "PPO_implementation").rstrip(".py"))
+    seed: int = 1
+    torch_deterministic: bool = True
+    cuda: bool = True
+    track: bool = True
+    wandb_project_name: str = "PPOCart"
+    wandb_entity: str = None
+    capture_video: bool = True
+    env_id: str = "CartPole-v1"
+    total_timesteps: int = 500000
+    learning_rate: float = 0.00025
+    num_envs: int = 4
+    num_steps: int = 128
+    gamma: float = 0.99
+    gae_lambda: float = 0.95
+    num_minibatches: int = 4
+    update_epochs: int = 4
+    clip_coef: float = 0.2
+    ent_coef: float = 0.01
+    vf_coef: float = 0.5
+    max_grad_norm: float = 0.5
+    batch_size: int = 512
+    minibatch_size: int = 128
+
+def compute_advantages(
+    next_value: t.Tensor,
+    next_done: t.Tensor,
+    rewards: t.Tensor,
+    values: t.Tensor,
+    dones: t.Tensor,
+    device: t.device,
+    gamma: float,
+    gae_lambda: float,
+) -> t.Tensor:
+    """Compute advantages using Generalized Advantage Estimation.
+    next_value: shape (1, env) - represents V(s_{t+1}) which is needed for the last advantage term
+    next_done: shape (env,)
+    rewards: shape (t, env)
+    values: shape (t, env)
+    dones: shape (t, env)
+    Return: shape (t, env)
+    """
+    "SOLUTION"
+    T = values.shape[0]
+    next_values = torch.concat([values[1:], next_value])
+    next_dones = torch.concat([dones[1:], next_done.unsqueeze(0)])
+    deltas = rewards + gamma * next_values * (1.0 - next_dones) - values
+
+    advantages = deltas.clone().to(device)
+    for t in reversed(range(1, T)):
+        advantages[t-1] = deltas[t-1] + gamma * gae_lambda * (1.0 - dones[t]) * advantages[t]
+    return advantages
+
+def calc_policy_loss(
+    probs: Categorical, mb_action: t.Tensor, mb_advantages: t.Tensor, mb_logprobs: t.Tensor, clip_coef: float
+) -> t.Tensor:
+    '''Return the policy loss, suitable for maximisation with gradient ascent.
+
+    probs: a distribution containing the actor's unnormalized logits of shape (minibatch, num_actions)
+
+    clip_coef: amount of clipping, denoted by epsilon in Eq 7.
+
+    normalize: if true, normalize mb_advantages to have mean 0, variance 1
+    '''
+    logits_diff = (probs.log_prob(mb_action) - mb_logprobs)
+
+    r_theta = t.exp(logits_diff)
+
+    mb_advantages = (mb_advantages - mb_advantages.mean()) / mb_advantages.std()
+
+    non_clipped = r_theta * mb_advantages
+    clipped = t.clip(r_theta, 1-clip_coef, 1+clip_coef) * mb_advantages
+
+    return t.minimum(non_clipped, clipped).mean()
+
+
+def calc_value_function_loss(critic: nn.Sequential, mb_obs: t.Tensor, mb_returns: t.Tensor, vf_coef: float) -> t.Tensor:
+    '''Compute the value function portion of the loss function.
+
+    vf_coef: the coefficient for the value loss, which weights its contribution to the overall loss. Denoted by c_1 in the paper.
+    '''
+    critic_prediction = critic(mb_obs)
+
+    return 0.5 * vf_coef * (critic_prediction - mb_returns).pow(2).mean()
+
+
+def calc_entropy_loss(probs: Categorical, ent_coef: float):
+    '''Return the entropy loss term.
+
+    ent_coef: the coefficient for the entropy loss, which weights its contribution to the overall loss. Denoted by c_2 in the paper.
+    '''
+    return ent_coef * probs.entropy().mean()
+
 # %%
 def set_seed(seed):
     random.seed(seed)
@@ -485,48 +587,6 @@ def test_find_optimal_policy(fn_to_test):
         val2 = policy_eval_exact(Norvig, actual_pi_opt, gamma)
         t.testing.assert_close(t.tensor(val1), t.tensor(val2))
 
-
-def make_env(env_id: str, seed: int, idx: int, capture_video: bool, run_name: str):
-    """Return a function that returns an environment after setting up boilerplate."""
-    
-    def thunk():
-        env = gym.make(env_id)
-        env = gym.wrappers.RecordEpisodeStatistics(env)
-        if capture_video:
-            if idx == 0:
-                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
-        env.seed(seed)
-        env.action_space.seed(seed)
-        env.observation_space.seed(seed)
-        return env
-    
-    return thunk
-
-
-
-def sum_rewards(rewards : List[int], gamma : float = 1):
-    """
-    Computes the total discounted sum of rewards for an episode.
-    By default, assume no discount
-    Input:
-        rewards [r1, r2, r3, ...] The rewards obtained during an episode
-        gamma: Discount factor
-    Output:
-        The sum of discounted rewards 
-        r1 + gamma*r2 + gamma^2 r3 + ...
-    """
-    total_reward = 0
-    for r in rewards[:0:-1]: #reverse, excluding first
-        total_reward += r
-        total_reward *= gamma
-    total_reward += rewards[0]
-    return total_reward
-
-def cummean(arr: Arr):
-    """
-    Computes the cumulative mean
-    """
-    return np.cumsum(arr) / np.arange(1, len(arr) + 1)
 
 def _random_experience(num_actions, observation_shape, num_environments):
     obs = np.random.randn(num_environments, *observation_shape)
@@ -624,3 +684,215 @@ def test_epsilon_greedy_policy(fn_to_test):
     assert np.mean(both_greedy) > 0 and np.mean(both_greedy) < 0.1
 
 
+def make_env(env_id: str, seed: int, idx: int, capture_video: bool, run_name: str):
+    """Return a function that returns an environment after setting up boilerplate."""
+    
+    def thunk():
+        env = gym.make(env_id)
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        if capture_video:
+            if idx == 0:
+                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+        obs = env.reset(seed=seed) # env.seed(seed) ?
+        env.action_space.seed(seed)
+        env.observation_space.seed(seed)
+        return env
+    
+    return thunk
+
+def window_avg(arr: Arr, window: int):
+    """
+    Computes sliding window average
+    """
+    return np.convolve(arr, np.ones(window), mode="valid") / window
+
+def cummean(arr: Arr):
+    """
+    Computes the cumulative mean
+    """
+    return np.cumsum(arr) / np.arange(1, len(arr) + 1)
+
+# Taken from https://stackoverflow.com/questions/42869495/numpy-version-of-exponential-weighted-moving-average-equivalent-to-pandas-ewm
+# See https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average
+def ewma(arr : Arr, alpha : float):
+    '''
+    Returns the exponentially weighted moving average of x.
+    Parameters:
+    -----------
+    x : array-like
+    alpha : float {0 <= alpha <= 1}
+    Returns:
+    --------
+    ewma: numpy array
+          the exponentially weighted moving average
+    '''
+    # Coerce x to an array
+    s = np.zeros_like(arr)
+    s[0] = arr[0]
+    for i in range(1,len(arr)):
+        s[i] = alpha * arr[i] + (1-alpha)*s[i-1]
+    return s
+
+
+def sum_rewards(rewards : List[int], gamma : float = 1):
+    """
+    Computes the total discounted sum of rewards for an episode.
+    By default, assume no discount
+    Input:
+        rewards [r1, r2, r3, ...] The rewards obtained during an episode
+        gamma: Discount factor
+    Output:
+        The sum of discounted rewards 
+        r1 + gamma*r2 + gamma^2 r3 + ...
+    """
+    total_reward = 0
+    for r in rewards[:0:-1]: #reverse, excluding first
+        total_reward += r
+        total_reward *= gamma
+    total_reward += rewards[0]
+    return total_reward
+
+def ppo_parse_args():
+    # fmt: off
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--exp-name", type=str, default=os.path.basename(__file__).rstrip(".py"),
+        help="the name of this experiment")
+    parser.add_argument("--seed", type=int, default=1,
+        help="seed of the experiment")
+    parser.add_argument("--torch-deterministic", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
+        help="if toggled, `torch.backends.cudnn.deterministic=False`")
+    parser.add_argument("--cuda", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
+        help="if toggled, cuda will be enabled by default")
+    parser.add_argument("--track", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
+        help="if toggled, this experiment will be tracked with Weights and Biases")
+    parser.add_argument("--wandb-project-name", type=str, default="cleanRL",
+        help="the wandb's project name")
+    parser.add_argument("--wandb-entity", type=str, default=None,
+        help="the entity (team) of wandb's project")
+    parser.add_argument("--capture-video", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
+        help="whether to capture videos of the agent performances (check out `videos` folder)")
+
+    # Algorithm specific arguments
+    parser.add_argument("--env-id", type=str, default="CartPole-v1",
+        help="the id of the environment")
+    parser.add_argument("--total-timesteps", type=int, default=500000,
+        help="total timesteps of the experiments")
+    parser.add_argument("--learning-rate", type=float, default=2.5e-4,
+        help="the learning rate of the optimizer")
+    parser.add_argument("--num-envs", type=int, default=4,
+        help="the number of parallel game environments")
+    parser.add_argument("--num-steps", type=int, default=128,
+        help="the number of steps to run in each environment per policy rollout")
+    parser.add_argument("--gamma", type=float, default=0.99,
+        help="the discount factor gamma")
+    parser.add_argument("--gae-lambda", type=float, default=0.95,
+        help="the lambda for the general advantage estimation")
+    parser.add_argument("--num-minibatches", type=int, default=4,
+        help="the number of mini-batches")
+    parser.add_argument("--update-epochs", type=int, default=4,
+        help="the K epochs to update the policy")
+    parser.add_argument("--clip-coef", type=float, default=0.2,
+        help="the surrogate clipping coefficient")
+    parser.add_argument("--ent-coef", type=float, default=0.01,
+        help="coefficient of the entropy")
+    parser.add_argument("--vf-coef", type=float, default=0.5,
+        help="coefficient of the value function")
+    parser.add_argument("--max-grad-norm", type=float, default=0.5,
+        help="the maximum norm for the gradient clipping")
+    args = parser.parse_args()
+    args.batch_size = int(args.num_envs * args.num_steps)
+    args.minibatch_size = int(args.batch_size // args.num_minibatches)
+    # fmt: on
+    return PPOArgs(**vars(args))
+
+
+def test_agent(Agent):
+    envs = gym.vector.SyncVectorEnv([make_env("CartPole-v1", i, i, False, "test-run") for i in range(5)])
+    agent = Agent(envs)
+    assert sum(p.numel() for p in agent.critic.parameters()) == 4545
+    assert sum(p.numel() for p in agent.actor.parameters()) == 4610
+    for name, param in agent.named_parameters():
+        if "bias" in name:
+            t.testing.assert_close(param.pow(2).sum(), t.tensor(0.0))
+
+def test_compute_advantages(fn_to_test, verbose=False):
+
+    t_ = 4
+    env_ = 6
+    next_value = t.randn(1, env_)
+    next_done = t.randint(0, 2, (env_,))
+    rewards = t.randn(t_, env_)
+    values = t.randn(t_, env_)
+    dones = t.randn(t_, env_)
+    device = t.device("cpu")
+    gamma = 0.95
+    gae_lambda = 0.95
+    args = (next_value, next_done, rewards, values, dones, device, gamma, gae_lambda)
+    
+    actual = fn_to_test(*args)
+    expected = compute_advantages(*args)
+
+    if verbose:
+        print("actual", actual)
+        print("expected", expected)
+
+    t.testing.assert_close(actual, expected)
+
+def test_calc_policy_loss(fn_to_test, verbose=False):
+
+    minibatch = 3
+    num_actions = 4
+    probs = Categorical(logits=t.randn((minibatch, num_actions)))
+    mb_action = t.randint(0, num_actions, (minibatch,))
+    mb_advantages = t.randn((minibatch,))
+    mb_logprobs = t.randn((minibatch,))
+    clip_coef = 0.01
+    expected = calc_policy_loss(probs, mb_action, mb_advantages, mb_logprobs, clip_coef)
+    actual = fn_to_test(probs, mb_action, mb_advantages, mb_logprobs, clip_coef)
+
+    if verbose:
+        print("actual", actual)
+        print("expected", expected)
+
+    t.testing.assert_close(actual.pow(2), expected.pow(2))
+    if actual * expected < 0:
+        print("Warning: you have calculated the negative of the policy loss, suitable for gradient descent.")
+    print("All tests in `test_calc_policy_loss` passed.")
+
+def test_calc_value_function_loss(fn_to_test, verbose=False):
+    critic = nn.Sequential(nn.Linear(3, 4), nn.ReLU())
+    mb_obs = t.randn(5, 3)
+    mb_returns = t.randn(5, 4)
+    vf_coef = 0.5
+    with t.inference_mode():
+        expected = calc_value_function_loss(critic, mb_obs, mb_returns, vf_coef)
+        actual = fn_to_test(critic, mb_obs, mb_returns, vf_coef)
+        if verbose:
+            print("actual", actual)
+            print("expected", expected)
+    if (actual - expected).abs() < 1e-4:
+        print("All tests in `test_calc_value_function_loss` passed!")
+    elif (0.5*actual - expected).abs() < 1e-4:
+        raise Exception("Your result was half the expected value. Did you forget to use a factor of 1/2 in the mean squared difference?")
+    t.testing.assert_close(actual, expected)
+
+def test_calc_entropy_loss(calc_entropy_loss, verbose=False):
+    probs = Categorical(logits=t.randn((3, 4)))
+    ent_coef = 0.5
+    expected = ent_coef * probs.entropy().mean()
+    actual = calc_entropy_loss(probs, ent_coef)
+    if verbose:
+        print("actual", actual)
+        print("expected", expected)
+    t.testing.assert_close(expected, actual)
+
+def test_minibatch_indexes(minibatch_indexes):
+    for n in range(5):
+        frac, minibatch_size = np.random.randint(1, 8, size=(2,))
+        batch_size = frac * minibatch_size
+        indices = minibatch_indexes(batch_size, minibatch_size)
+        assert isinstance(indices, list)
+        assert isinstance(indices[0], np.ndarray)
+        assert len(indices) == frac
+        np.testing.assert_equal(np.sort(np.stack(indices).flatten()), np.arange(batch_size))
+    print("All tests in `test_minibatch_indexes` passed.")

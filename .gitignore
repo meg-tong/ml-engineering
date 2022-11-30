@@ -1,5 +1,9 @@
 __pycache__
-wandb/*
+*model_state_dict.pt
+*torch-gpu.txt
+*wandb*
+*videos*
+*runs*
 data/wikitext*
 data/cifar*
 data/bert-imdb*
