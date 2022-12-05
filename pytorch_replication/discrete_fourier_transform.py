@@ -1,11 +1,9 @@
 # %%
-import importlib
 from typing import Callable
 
 import numpy as np
-from matplotlib.pyplot import step
 
-import arena_utils
+import pytorch_utils
 import plotly.express as px
 
 
@@ -21,7 +19,7 @@ def DFT_1d(arr : np.ndarray, inverse: bool = False) -> np.ndarray:
     """
     return np.inner(create_matrix(arr.shape[0], inverse), arr)
 
-arena_utils.test_DFT_func(DFT_1d)
+pytorch_utils.test_DFT_func(DFT_1d)
 # %%
 def test(DFT_1d) -> None:
     F = np.array([20, -4j, 12, 4j])
@@ -42,20 +40,20 @@ def integrate_function(func: Callable, x0: float, x1: float, n_samples: int = 10
     xs = np.arange(x0, x1, step)
     return sum([step * func(x) for x in xs])
 
-arena_utils.test_integrate_function(integrate_function)
+pytorch_utils.test_integrate_function(integrate_function)
 #%% 
 def integrate_product(func1: Callable, func2: Callable, x0: float, x1: float):
     """
     Computes the L2 inner product of two functions, between x0 and x1. 
 
-    This should reference the previous function.
+    This should reference the preous function.
 
     For more, see this page: https://mathworld.wolfram.com/L2-InnerProduct.html
     """
     f = lambda x: func1(x) * func2(x)
     return integrate_function(f, x0, x1)
 
-arena_utils.test_integrate_product(integrate_product)
+pytorch_utils.test_integrate_product(integrate_product)
 # %%
 def calculate_fourier_series(func: Callable, max_freq: int = 50):
     """
@@ -86,6 +84,6 @@ def create_fourier_graph(calculate_fourier_series: Callable, func: Callable):
 
 step_func = lambda x: 1 * (x > 0)
 create_fourier_graph(calculate_fourier_series, func = step_func)
-arena_utils.create_interactive_fourier_graph(calculate_fourier_series, func = step_func)
+pytorch_utils.create_interactive_fourier_graph(calculate_fourier_series, func = step_func)
 
 # %%
