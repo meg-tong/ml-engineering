@@ -1,5 +1,5 @@
 # %%
-import arena_utils
+import optimizer_utils
 import torch as t
 from typing import Callable, Iterable, Tuple
 # %%
@@ -8,7 +8,7 @@ def rosenbrocks_banana(x: t.Tensor, y: t.Tensor, a=1, b=100) -> t.Tensor:
 
 x_range = [-2, 2]
 y_range = [-1, 3]
-fig = arena_utils.plot_fn(rosenbrocks_banana, x_range, y_range, log_scale=True)
+fig = optimizer_utils.plot_fn(rosenbrocks_banana, x_range, y_range, log_scale=True)
 if __name__ == "__main__":
     fig.show()
 # %%
@@ -51,7 +51,7 @@ xy = t.tensor([-1.5, 2.5], requires_grad=True)
 x_range = [-2, 2]
 y_range = [-1, 3]
 
-fig = arena_utils.plot_optimization_sgd(opt_fn_from_scratch, rosenbrocks_banana, xy, x_range, y_range, show_min=True)
+fig = optimizer_utils.plot_optimization_sgd(opt_fn_from_scratch, rosenbrocks_banana, xy, x_range, y_range, show_min=True)
 
 if __name__ == "__main__":
     fig.show()
@@ -88,7 +88,7 @@ class SGD:
         return f"SGD(lr={self.lr},momentum={self.momentum},weight_decay={self.weight_decay}"
 
 if __name__ == "__main__":
-    arena_utils.test_sgd(SGD)
+    optimizer_utils.test_sgd(SGD)
 #%%
 class SGD_groups:
 
@@ -132,7 +132,7 @@ class SGD_groups:
                 param -= lr * velocity
 
 if __name__ == "__main__":
-    arena_utils.test_sgd_param_groups(SGD_groups)
+    optimizer_utils.test_sgd_param_groups(SGD_groups)
 # %%
 class RMSprop:
     def __init__(
@@ -176,7 +176,7 @@ class RMSprop:
         return f"RMSProp(lr={self.lr},momentum={self.momentum},weight_decay={self.weight_decay},alpha={self.alpha},eps={self.eps}"
 
 if __name__ == "__main__":
-    arena_utils.test_rmsprop(RMSprop)
+    optimizer_utils.test_rmsprop(RMSprop)
 # %%
 class Adam:
     def __init__(
@@ -225,7 +225,7 @@ class Adam:
         return f"Adam(lr={self.lr},betas={self.betas},weight_decay={self.weight_decay},betas={self.betas},eps={self.eps}"
 
 if __name__ == "__main__":
-    arena_utils.test_adam(Adam)
+    optimizer_utils.test_adam(Adam)
 # %%
 def opt_fn(fn: Callable, xy: t.Tensor, optimizer_class, optimizer_kwargs, n_iters: int = 100):
     '''Optimize the a given function starting from the specified point.
@@ -250,11 +250,11 @@ y_range = [-1, 3]
 optimizers = [
     (SGD, dict(lr=1e-3, momentum=0.98, weight_decay=0.0)),
     (SGD, dict(lr=5e-4, momentum=0.98, weight_decay=0.0)),
-    (Adam, dict(lr=1e-3, betas=(0.8,0.98))),
+    (Adam, dict(lr=1e-3, betas=(0.8,0.98), eps=0.001, weight_decay=0.0)),
 ]
 fn = rosenbrocks_banana
 
 if __name__ == "__main__":
-    fig = arena_utils.plot_optimization(opt_fn, fn, xy, optimizers, x_range, y_range)
+    fig = optimizer_utils.plot_optimization(opt_fn, fn, xy, optimizers, x_range, y_range)
     fig.show()
 # %%

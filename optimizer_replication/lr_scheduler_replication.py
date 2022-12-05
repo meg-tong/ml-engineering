@@ -3,7 +3,7 @@ from typing import Callable
 
 import torch as t
 
-import arena_utils
+import optimizer_utils
 import optimizer_replication
 #%%
 class ExponentialLR():
@@ -23,7 +23,7 @@ class ExponentialLR():
         return f"ExponentialLR(gamma={self.gamma})"
 
 if __name__ == "__main__":
-    arena_utils.test_ExponentialLR(ExponentialLR, optimizer_replication.SGD)
+    optimizer_utils.test_ExponentialLR(ExponentialLR, optimizer_replication.SGD)
 # %%
 class StepLR():
     def __init__(self, optimizer, step_size, gamma=0.1):
@@ -46,7 +46,7 @@ class StepLR():
         return f"StepLR(step_size={self.step_size}),gamma={self.gamma})"
 
 if __name__ == "__main__":
-    arena_utils.test_StepLR(StepLR, optimizer_replication.SGD)
+    optimizer_utils.test_StepLR(StepLR, optimizer_replication.SGD)
 # %%
 class MultiStepLR():
     def __init__(self, optimizer, milestones, gamma=0.1):
@@ -69,7 +69,7 @@ class MultiStepLR():
         return f"MultiStepLR(milestones={self.milestones}),gamma={self.gamma})"
 
 if __name__ == "__main__":
-    arena_utils.test_MultiStepLR(MultiStepLR, optimizer_replication.SGD)
+    optimizer_utils.test_MultiStepLR(MultiStepLR, optimizer_replication.SGD)
 # %%
 def opt_fn_with_scheduler(
     fn: Callable, 
@@ -106,14 +106,14 @@ if __name__ == "__main__":
     optimizers = [
         (optimizer_replication.SGD, dict(lr=1e-3, momentum=0.98)),
         (optimizer_replication.SGD, dict(lr=1e-3, momentum=0.98)),
-        (optimizer_replication.Adam, dict(lr=1e-3, betas=(0.8, 0.9)),
+        (optimizer_replication.Adam, dict(lr=1e-3, betas=(0.8, 0.9))),
     ]
     schedulers = [
         (), # Empty list stands for no scheduler
         (ExponentialLR, dict(gamma=0.99)),
     ]
     fn = optimizer_replication.rosenbrocks_banana
-    fig = arena_utils.plot_optimization_with_schedulers(opt_fn_with_scheduler, fn, xy, optimizers, schedulers, x_range, y_range, show_min=True)
+    fig = optimizer_utils.plot_optimization_with_schedulers(opt_fn_with_scheduler, fn, xy, optimizers, schedulers, x_range, y_range, show_min=True)
 
     fig.show()
 # %%
