@@ -4,6 +4,10 @@ import torch as t
 from einops import rearrange
 import pandas as pd
 from IPython.display import display
+from typing import Optional
+from tqdm.notebook import tqdm_notebook
+
+from torchvision import datasets, transforms
 
 def pad1d(x: t.Tensor, left: int, right: int, pad_value: float) -> t.Tensor:
     """Return a new tensor with padding applied to the edges.
@@ -90,6 +94,33 @@ def print_param_count(*models, display_df=True, use_state_dict=False):
             display(s)
     else:
         return df
+
+def get_mnist(subsample: Optional[int] = None, batch_size=512, test=True):
+    """Return MNIST data using the provided Tensor class."""
+    if subsample is None:
+        subsample = 1
+    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.28,), (0.35,))])
+
+    mnist_train = datasets.MNIST("../data", train=True, download=True)
+    train_indexes = range(0, len(mnist_train), subsample)
+    train_reduced = [mnist_train[i] for i in train_indexes]
+    train_tensors = t.utils.data.TensorDataset(
+        t.stack([transform(img) for img, label in tqdm_notebook(train_reduced, desc="Training data")]),
+        t.tensor([label for img, label in train_reduced]),
+    )
+    train_loader = t.utils.data.DataLoader(train_tensors, shuffle=True, batch_size=batch_size)
+    if test:
+        mnist_test = datasets.MNIST("../data", train=False)
+        test_indexes = range(0, len(mnist_test), subsample)
+        test_reduced = [mnist_test[i] for i in test_indexes]
+        test_tensors = t.utils.data.TensorDataset(
+            t.stack([transform(img) for img, label in tqdm_notebook(test_reduced, desc="Test data")]),
+            t.tensor([label for img, label in test_reduced]),
+        )
+        test_loader = t.utils.data.DataLoader(test_tensors, batch_size=batch_size)
+        return train_loader, test_loader
+
+    return train_loader
 
 def test_conv_transpose1d_minimal(conv_transpose1d_minimal, n_tests=20):
     import numpy as np

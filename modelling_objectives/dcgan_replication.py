@@ -2,7 +2,7 @@
 import time
 from typing import Tuple
 
-import obj_utils
+import modelling_objectives_utils
 import torch as t
 from einops.layers.torch import Rearrange
 from torch import nn
@@ -185,7 +185,7 @@ def generate_dataset(folder="../data/img_align_celeba", img_size=64):
     return trainset
 
 if MAIN:
-    obj_utils.show_images(generate_dataset(), rows=3, cols=5)
+    modelling_objectives_utils.show_images(generate_dataset(), rows=3, cols=5)
 #%%
 
 def train(args: DCGANArgs):#Optional[DCGANArgs] = None):
@@ -204,8 +204,6 @@ def train(args: DCGANArgs):#Optional[DCGANArgs] = None):
     trainloader = DataLoader(trainset, shuffle=True, batch_size=args.batch_size)
     
     for epoch in range(args.epochs):
-
-
         progress_bar = tqdm_notebook(trainloader)
         images_seen = 0
         stopwatch = time.time()
@@ -236,7 +234,7 @@ def train(args: DCGANArgs):#Optional[DCGANArgs] = None):
             # Logging
             progress_bar.set_description(f"Epoch={epoch}, discriminator_loss={discriminator_loss:.3f}, generator_loss={generator_loss:.3f}, real_image_loss={real_image_loss:.3f}, fake_image_loss={fake_image_loss:.3f}")
             if time.time() - stopwatch > args.seconds_between_image_logs:
-                obj_utils.show_images(fake_image.detach(), rows=2, cols=4)
+                modelling_objectives_utils.show_images(fake_image.detach(), rows=2, cols=4)
                 stopwatch = time.time()
 
 if MAIN:
