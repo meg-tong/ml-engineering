@@ -91,8 +91,6 @@ def print_param_count(*models, display_df=True, use_state_dict=False):
     else:
         return df
 
-import torch as t
-
 def test_conv_transpose1d_minimal(conv_transpose1d_minimal, n_tests=20):
     import numpy as np
     for _ in range(n_tests):

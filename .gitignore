@@ -8,6 +8,8 @@ data/wikitext*
 data/cifar*
 data/bert-imdb*
 data/shakespeare.txt
+data/img_align*
+data/MNIST
 .DS_Store
 solutions*
 mlab*
