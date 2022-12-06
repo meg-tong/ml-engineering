@@ -6,6 +6,9 @@ import torch as t
 from einops.layers.torch import Rearrange
 from torch import nn
 from tqdm.notebook import tqdm_notebook
+import numpy as np
+import plotly.express as px
+from einops import rearrange
 
 import wandb
 
@@ -74,12 +77,9 @@ class ConvolutionalAutoencoder(nn.Module):
         return x_reconstructed
 
 #%%
-def train(autoencoder: nn.Module):
-    
-    device = t.device("cuda" if t.cuda.is_available() else "cpu")
+def train(autoencoder: nn.Module, trainloader):
     epochs = 2
 
-    trainloader = modelling_objectives_utils.get_mnist(test=False)
     optimiser = t.optim.Adam(autoencoder.parameters())
 
     for epoch in range(epochs):
@@ -97,8 +97,22 @@ def train(autoencoder: nn.Module):
     modelling_objectives_utils.show_images(image.squeeze().detach(), rows=1, cols=5)
     modelling_objectives_utils.show_images(t.clip(output, -0.28/0.35, (1-0.28)/0.35).squeeze().detach(), rows=1, cols=5) # Need to clip to avoid min/max throwing px off
 
-#%%    
-#train(Autoencoder())
+#%%
+device = t.device("cuda" if t.cuda.is_available() else "cpu")
+latent_dim_size = 5
+trainloader = modelling_objectives_utils.get_mnist(test=False)
+autoencoder = Autoencoder(latent_dim_size=latent_dim_size) # ConvolutionalAutoencoder() 
+train(autoencoder, trainloader)
 # %%
-train(ConvolutionalAutoencoder())
+def plot_latent_space(first_dimension=0, second_dimension=1):
+    image, label = next(iter(trainloader))
+    output = autoencoder.encoder(image.to(device)).detach()#.cpu().numpy()
+    fig = px.scatter(x=output[:, first_dimension], y=output[:, second_dimension], color=[str(x) for x in label.numpy()])
+    fig.update_xaxes(title=f"Dimension {first_dimension}")
+    fig.update_yaxes(title=f"Dimension {second_dimension}")
+    fig.show()
+
+for i in range(latent_dim_size):
+    for j in range(i + 1, latent_dim_size):
+        plot_latent_space(i, j)
 # %%
