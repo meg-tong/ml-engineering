@@ -1,8 +1,7 @@
 #%%
 import time
-from typing import Tuple, Optional
+from typing import Tuple
 
-import numpy as np
 import obj_utils
 import torch as t
 from einops.layers.torch import Rearrange
@@ -164,13 +163,6 @@ class DCGAN(nn.Module):
         )
 
 #%%
-import w5d1_solutions
-args = DCGANArgs()
-dcgan = DCGAN.from_args(DCGANArgs())
-obj_utils.print_param_count(dcgan.discriminator, w5d1_solutions.celeb_mini_DCGAN.netD)
-print(w5d1_solutions.celeb_mini_DCGAN.netD)
-
-#%%
 def initialize_weights(model, mean=0, batch_norm_mean=1, std=0.02) -> None:
     for module in model.named_modules():
         if isinstance(module, nn.BatchNorm2d):
@@ -182,6 +174,7 @@ def initialize_weights(model, mean=0, batch_norm_mean=1, std=0.02) -> None:
 def generate_dataset(folder="../data/img_align_celeba", img_size=64):
     transform = transforms.Compose([
         transforms.Resize(img_size),
+        transforms.CenterCrop(img_size),
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
     ])
@@ -203,9 +196,6 @@ def train(args: DCGANArgs):#Optional[DCGANArgs] = None):
     initialize_weights(dcgan.discriminator)
     initialize_weights(dcgan.generator)
     
-    #paper_batch_size = 128
-    #assert paper_batch_size % args.batch_size == 0
-    #batch_size_ratio = paper_batch_size // args.batch_size
     generator_optimiser = t.optim.Adam(dcgan.generator.parameters(), lr=args.lr, betas=args.betas) 
     discriminator_optimiser = t.optim.Adam(dcgan.discriminator.parameters(), lr=args.lr, betas=args.betas)
     #TODO: check the hyperparameters are the same?
@@ -229,9 +219,8 @@ def train(args: DCGANArgs):#Optional[DCGANArgs] = None):
             real_image = real_image.to(device)
             real_image_loss = t.log(dcgan.discriminator(real_image)).mean()
             fake_image_loss = t.log(1 - dcgan.discriminator(fake_image.detach())).mean()
-            discriminator_loss = - (real_image_loss + fake_image_loss) #TODO: check whether this should aggregate across 'mega'batches?
+            discriminator_loss = - (real_image_loss + fake_image_loss)
 
-            #if images_seen % paper_batch_size == 0:
             dcgan.discriminator.zero_grad()
             discriminator_loss.backward() 
             discriminator_optimiser.step()
@@ -249,8 +238,6 @@ def train(args: DCGANArgs):#Optional[DCGANArgs] = None):
             if time.time() - stopwatch > args.seconds_between_image_logs:
                 obj_utils.show_images(fake_image.detach(), rows=2, cols=4)
                 stopwatch = time.time()
-            
-t.autograd.set_detect_anomaly(True)
 
 if MAIN:
     args = DCGANArgs()
