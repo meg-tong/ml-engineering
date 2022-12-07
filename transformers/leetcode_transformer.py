@@ -13,7 +13,7 @@ import wandb
 
 import bert_replication
 import transformer_replication
-import utils
+import transformers_utils
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 

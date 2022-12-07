@@ -6,7 +6,7 @@ import transformers
 from einops import rearrange, repeat
 from fancy_einsum import einsum
 
-import arena_utils
+import transformers_utils
 import transformer_replication
 
 
@@ -103,11 +103,11 @@ def copy_weights(my_model, model, gpt2=True):
 if __name__ == "__main__":
     my_gpt = transformer_replication.DecoderOnlyTransformer(config, transformer_replication.Embedding, GPTDecoderBlock).train()
     gpt = transformers.AutoModelForCausalLM.from_pretrained("gpt2").train()
-    #arena_utils.print_param_count(my_gpt, gpt, use_state_dict=False)
+    #transformers_utils.print_param_count(my_gpt, gpt, use_state_dict=False)
     my_gpt = copy_weights(my_gpt, gpt)
     tokenizer = transformers.AutoTokenizer.from_pretrained("gpt2")
-    arena_utils.test_load_pretrained_weights(gpt, tokenizer)
-    arena_utils.test_load_pretrained_weights(my_gpt, tokenizer)
+    transformers_utils.test_load_pretrained_weights(gpt, tokenizer)
+    transformers_utils.test_load_pretrained_weights(my_gpt, tokenizer)
 
 # %%
 # %%

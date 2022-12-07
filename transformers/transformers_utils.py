@@ -1,205 +1,63 @@
-import warnings
-from typing import Callable, List, Optional
+import glob
+import os
 
-import ipywidgets as wg
 import numpy as np
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-import plotly.graph_objs as go
-import torch
+import requests
 import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.utils.data
-import torchvision
-import transformers
-from einops import rearrange, repeat
+import transformer_replication
+import yaml
+from einops import rearrange
 from IPython.display import display
-from plotly.subplots import make_subplots
 from torch import nn
-from torchvision import datasets, transforms
-from tqdm.auto import tqdm
-import random
+
+import transformers
 
 Arr = np.ndarray
 
-def display_array_as_img(img_array):
-    """
-    Displays a numpy array as an image
-    
-    Two options:
-        img_array.shape = (height, width) -> interpreted as monochrome
-        img_array.shape = (3, height, width) -> interpreted as RGB
-    """
-    shape = img_array.shape
-    assert len(shape) == 2 or (shape[0] == 3 and len(shape) == 3), "Incorrect format (see docstring)"
-    
-    if len(shape) == 3:
-        img_array = rearrange(img_array, "c h w -> h w c")
-    height, width = img_array.shape[:2]
-    
-    fig = px.imshow(img_array, zmin=0, zmax=255, color_continuous_scale='gray')
-    fig.update_xaxes(showticklabels=False)
-    fig.update_yaxes(showticklabels=False)
-    fig.update_layout(coloraxis_showscale=False, margin=dict.fromkeys("tblr", 0), height=height, width=width)
-    fig.show(config=dict(displayModeBar=False))
+def load_transformer(run_id, model_class, base_config: transformer_replication.TransformerConfig = None, vocab_size = None):
+    root = '/Users/m/Documents/ml-engineering/wandb/'
+    model_path = glob.glob(
+        f'{root}/run-*-{run_id}/files/model_state_dict.pt'
+    )[0]
 
-def test_einsum_trace(einsum_trace):
-    mat = np.random.randn(3, 3)
-    np.testing.assert_almost_equal(einsum_trace(mat), np.trace(mat))
-    print("All tests in `test_einsum_trace` passed!")
+    if base_config is None:
+        yaml_path = glob.glob(
+            f'{root}/run-*-{run_id}/files/config.yaml'
+        )[0]
+        with open(yaml_path, 'r') as f:
+            yaml_cfg = yaml.safe_load(f)
 
-def test_einsum_mv(einsum_mv):
-    mat = np.random.randn(2, 3)
-    vec = np.random.randn(3)
-    np.testing.assert_almost_equal(einsum_mv(mat, vec), mat @ vec)
-    print("All tests in `test_einsum_mv` passed!")
-
-def test_einsum_mm(einsum_mm):
-    mat1 = np.random.randn(2, 3)
-    mat2 = np.random.randn(3, 4)
-    np.testing.assert_almost_equal(einsum_mm(mat1, mat2), mat1 @ mat2)
-    print("All tests in `test_einsum_mm` passed!")
-
-def test_einsum_inner(einsum_inner):
-    vec1 = np.random.randn(3)
-    vec2 = np.random.randn(3)
-    np.testing.assert_almost_equal(einsum_inner(vec1, vec2), np.dot(vec1, vec2))
-    print("All tests in `test_einsum_inner` passed!")
-
-def test_einsum_outer(einsum_outer):
-    vec1 = np.random.randn(3)
-    vec2 = np.random.randn(4)
-    np.testing.assert_almost_equal(einsum_outer(vec1, vec2), np.outer(vec1, vec2))
-    print("All tests in `test_einsum_outer` passed!")
-
-
-def test_trace(trace_fn):
-    for n in range(10):
-        assert trace_fn(t.zeros((n, n), dtype=t.long)) == 0, f"Test failed on zero matrix with size ({n}, {n})"
-        assert trace_fn(t.eye(n, dtype=t.long)) == n, f"Test failed on identity matrix with size ({n}, {n})"
-        x = t.randint(0, 10, (n, n))
-        expected = t.trace(x)
-        actual = trace_fn(x)
-        assert actual == expected, f"Test failed on randmly initialised matrix with size ({n}, {n})"
-    print("All tests in `test_trace` passed!")
-
-def test_mv(mv_fn):
-    mat = t.randn(3, 4)
-    vec = t.randn(4)
-    mv_actual = mv_fn(mat, vec)
-    mv_expected = mat @ vec
-    t.testing.assert_close(mv_actual, mv_expected)
-    print("All tests in `test_mv` passed!")
-    
-def test_mv2(mv_fn):
-    big = t.randn(30)
-    mat = big.as_strided(size=(3, 4), stride=(2, 4), storage_offset=8)
-    vec = big.as_strided(size=(4,), stride=(3,), storage_offset=8)
-    mv_actual = mv_fn(mat, vec)
-    mv_expected = mat @ vec
-    t.testing.assert_close(mv_actual, mv_expected)
-    print("All tests in `test_mv2` passed!")
-        
-def test_mm(mm_fn):
-    matA = t.randn(3, 4)
-    matB = t.randn(4, 5)
-    mm_actual = mm_fn(matA, matB)
-    mm_expected = matA @ matB
-    t.testing.assert_close(mm_actual, mm_expected)
-    print("All tests in `test_mm` passed!")
-
-def test_mm2(mm_fn):
-    big = t.randn(30)
-    matA = big.as_strided(size=(3, 4), stride=(2, 4), storage_offset=8)
-    matB = big.as_strided(size=(4, 5), stride=(3, 2), storage_offset=8)
-    mm_actual = mm_fn(matA, matB)
-    mm_expected = matA @ matB
-    t.testing.assert_close(mm_actual, mm_expected)
-    print("All tests in `test_mm2` passed!")
-
-def compare_my_resnet_to_pytorch(myresnet):
-    
-    their_state = torchvision.models.resnet34().state_dict().items()
-    your_state = myresnet.state_dict().items()
-    
-    df = pd.DataFrame.from_records(
-        [(tk, tuple(tv.shape), mk, tuple(mv.shape)) for ((tk, tv), (mk, mv)) in zip(their_state, your_state)],
-        columns=["their name", "their shape", "your name", "your shape"],
-    )
-    with pd.option_context("display.max_rows", None):  # type: ignore
-        display(df)
-
-def print_param_count(*models, display_df=True, use_state_dict=True):
-    """
-    display_df: bool
-        If true, displays styled dataframe
-        if false, returns dataframe
-
-    use_state_dict: bool
-        If true, uses model.state_dict() to construct dataframe
-            This will include buffers, not just params
-        If false, uses model.named_parameters() to construct dataframe
-            This misses out buffers (more useful for GPT)
-    """
-    df_list = []
-    gmap_list = []
-    for i, model in enumerate(models, start=1):
-        iterator = model.state_dict().items() if use_state_dict else model.named_parameters()
-        print(f"Model {i}, total params = {sum([param.numel() for name, param in iterator])}")
-        df = pd.DataFrame([
-            {f"name_{i}": name, f"shape_{i}": tuple(param.shape), f"num_params_{i}": param.numel()}
-            for name, param in iterator
-        ]) if (i == 1) else pd.DataFrame([
-            {f"num_params_{i}": param.numel(), f"shape_{i}": tuple(param.shape), f"name_{i}": name}
-            for name, param in iterator
-        ])
-        df_list.append(df)
-        gmap_list.append(np.log(df[f"num_params_{i}"]))
-    df = df_list[0] if len(df_list) == 1 else pd.concat(df_list, axis=1).fillna(0)
-    for i in range(1, len(models) + 1):
-        df[f"num_params_{i}"] = df[f"num_params_{i}"].astype(int)
-    if len(models) > 1:
-        param_counts = [df[f"num_params_{i}"].values.tolist() for i in range(1, len(models) + 1)]
-        if all([param_counts[0] == param_counts[i] for i in range(1, len(param_counts))]):
-            print("All parameter counts match!")
-        else:
-            print("Parameter counts don't match up exactly.")
-    if display_df:
-        s = df.style
-        for i in range(1, len(models) + 1):
-            s = s.background_gradient(cmap="viridis", subset=[f"num_params_{i}"], gmap=gmap_list[i-1])
-        with pd.option_context("display.max_rows", 1000):
-            display(s)
-    else:
-        return df
-
-def plot_results(loss_list, accuracy_list):
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(y=loss_list, name="Training loss"))
-    fig.update_xaxes(title_text="Num batches observed")
-    fig.update_yaxes(title_text="Training loss", secondary_y=False)
-    # This next bit of code plots vertical lines corresponding to the epochs
-    if len(accuracy_list) > 1:
-        for idx, epoch_start in enumerate(np.linspace(0, len(loss_list), len(accuracy_list), endpoint=False)):
-            fig.add_vline(x=epoch_start, line_width=3, line_dash="dash", annotation_text=f"Epoch {idx}", annotation_position="top right")
-        fig.add_trace(
-            go.Scatter(y=accuracy_list, x=np.linspace(0, len(loss_list), len(accuracy_list)), mode="lines", name="Accuracy"),
-            secondary_y=True
+        base_config = transformer_replication.TransformerConfig(
+            num_layers=yaml_cfg['num_layers']['value'],
+            num_heads=yaml_cfg['num_heads']['value'],
+            vocab_size=(yaml_cfg['vocab_size']['value'] if vocab_size is None else vocab_size),
+            hidden_size=yaml_cfg['hidden_size']['value'],
+            max_seq_len=yaml_cfg['max_seq_len']['value'],
+            dropout=yaml_cfg['dropout']['value']
         )
-    fig.update_layout(template="simple_white", title_text="Training loss & accuracy on CIFAR10")
-    fig.show()
 
-def show_cifar_images(trainset, rows=3, cols=5):
-    
-    img = trainset.data[:rows*cols]
-    fig = px.imshow(img, facet_col=0, facet_col_wrap=cols)
-    for i, j in enumerate(np.arange(rows*cols).reshape(rows, cols)[::-1].flatten()):
-            fig.layout.annotations[i].text = trainset.classes[trainset.targets[j]]
-    fig.show()
+    model = model_class(base_config)
+    state_dict = t.load(
+        model_path
+    )
+    model.load_state_dict(state_dict)
+    return model
 
-
+def maybe_download(url: str, path: str) -> None:
+    '''
+    Download the file from url and save it to path. 
+    If path already exists, do nothing.
+    '''
+    if os.path.isfile(path):
+        return
+    response = requests.get(url, stream=True)
+    if response.status_code == 200:
+        with open(path, 'wb') as f:
+            f.write(response.raw.read())
 
 def test_embedding(Embedding):
     """Indexing into the embedding should fetch the corresponding rows of the embedding."""

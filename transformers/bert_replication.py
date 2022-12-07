@@ -7,7 +7,7 @@ from einops import repeat
 from fancy_einsum import einsum
 from torch import nn
 
-import arena_utils
+import transformers_utils
 import attention_replication
 import gpt2_replication
 import transformer_replication
@@ -128,7 +128,7 @@ def make_additive_attention_mask(one_zero_attention_mask: t.Tensor, big_negative
     return  t.where(expanded_one_zero_attention_mask.bool(), 0, big_negative_number)
 
 if __name__ == "__main__":
-    arena_utils.test_make_additive_attention_mask(make_additive_attention_mask)
+    transformers_utils.test_make_additive_attention_mask(make_additive_attention_mask)
 
 #%%
 bert = transformers.BertForMaskedLM.from_pretrained("bert-base-cased")
@@ -147,7 +147,7 @@ config = transformer_replication.TransformerConfig(
 if __name__ == "__main__":
     my_bert = BertLanguageModel(config)
     my_bert = gpt2_replication.copy_weights(my_bert, bert, gpt2=False)
-    #arena_utils.print_param_count(my_bert, bert, use_state_dict=False)
+    #transformers_utils.print_param_count(my_bert, bert, use_state_dict=False)
 
 def predict(model, tokenizer, text: str, k=15) -> List[List[str]]:
     '''

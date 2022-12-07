@@ -2,15 +2,12 @@
 import time
 
 import torch as t
-from einops import rearrange
-from fancy_einsum import einsum
-from plotly.subplots import make_subplots
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm.notebook import tqdm_notebook
 
-import arena_utils
+import pytorch_utils
 import resnet_replication
 import wandb
 
@@ -27,7 +24,7 @@ transform = transforms.Compose([
 trainset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
 testset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 
-arena_utils.show_cifar_images(trainset, rows=3, cols=5)
+pytorch_utils.show_cifar_images(trainset, rows=3, cols=5)
 # %%
 def train() -> None:
 

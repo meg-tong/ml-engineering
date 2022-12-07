@@ -11,7 +11,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm.notebook import tqdm_notebook
 
-import arena_utils
+import transformers_utils
 import wandb
 
 # %%
@@ -42,7 +42,7 @@ class Embedding(nn.Module):
         return f"{self.num_embeddings}, {self.embedding_dim}"
 
 if __name__ == "__main__":
-    arena_utils.test_embedding(Embedding)
+    transformers_utils.test_embedding(Embedding)
 # %%
 #TODO positional encoding
 class PositionalEncoding(nn.Module):
@@ -94,11 +94,11 @@ class LayerNorm(nn.Module):
         pass
     
 if __name__ == "__main__":
-    arena_utils.test_layernorm_mean_1d(LayerNorm)
-    arena_utils.test_layernorm_mean_2d(LayerNorm)
-    arena_utils.test_layernorm_std(LayerNorm)
-    arena_utils.test_layernorm_exact(LayerNorm)
-    arena_utils.test_layernorm_backward(LayerNorm)
+    transformers_utils.test_layernorm_mean_1d(LayerNorm)
+    transformers_utils.test_layernorm_mean_2d(LayerNorm)
+    transformers_utils.test_layernorm_std(LayerNorm)
+    transformers_utils.test_layernorm_exact(LayerNorm)
+    transformers_utils.test_layernorm_backward(LayerNorm)
 # %%
 from dataclasses import dataclass
 
@@ -158,7 +158,7 @@ class DecoderOnlyTransformer(nn.Module):
         self.token_embedding = Embedding(config.vocab_size, config.hidden_size)
         self.positional_embedding = positional_embedding(config.max_seq_len, config.hidden_size)
         self.dropout = nn.Dropout(config.dropout)
-        self.blocks = nn.Sequential(*[decoderBlock(config) for _ in range(config.num_layers)])
+        self.bert_blocks = nn.Sequential(*[decoderBlock(config) for _ in range(config.num_layers)])
         self.layer_norm = nn.LayerNorm(config.hidden_size, config.layer_norm_epsilon)
         
     def forward(self, x: t.Tensor) -> t.Tensor:
@@ -169,7 +169,7 @@ class DecoderOnlyTransformer(nn.Module):
             pos = t.arange(x.shape[1], device=x.device)
             x = self.token_embedding(x) + self.positional_embedding(pos)
         x = self.dropout(x)
-        for block in self.blocks:
+        for block in self.bert_blocks:
             x = block(x)
         x = self.layer_norm(x)
         x = einsum('num_embeddings embedding_dim,batch seq_len embedding_dim ->batch seq_len num_embeddings', self.token_embedding.weight, x)

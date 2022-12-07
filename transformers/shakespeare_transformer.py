@@ -212,10 +212,10 @@ wandb.agent(sweep_id=sweep_id, function=train, count=1)
 # %%
 
 #%%
-shakespeare = Data.from_file('data/shakespeare.txt', excerpt=Excerpt.SHORT_PLAYS)
-model = utils.load_transformer('vlb9iauk', transformer_replication.DecoderOnlyTransformer, vocab_size=len(shakespeare.vocab)) #refmccyi') #3kp6zgq0 #'582bmtai' #'3fhf5zbw'
+shakespeare = Data.from_file('data/shakespeare.txt', excerpt=Excerpt.SONNETS)
+model = utils.load_transformer('3fhf5zbw', transformer_replication.DecoderOnlyTransformer, vocab_size=len(shakespeare.vocab)) #refmccyi') #3kp6zgq0 #'582bmtai' #'3fhf5zbw'
 shakespeare.model_max_length = 40
-text_output = sampling.sample_tokens(model, shakespeare, ' I speak of love ', max_tokens_generated=400, temperature=1.6, top_k=15)
+text_output = sampling.sample_tokens(model, shakespeare, ' I speak of love ', max_tokens_generated=400, temperature=2, top_k=10)
 print(text_output)
 
 # %%

@@ -1,10 +1,10 @@
 # %%
-from typing import List, Optional, Union
+from typing import Optional
 
 import numpy as np
 import torch as t
 import torch.nn as nn
-from einops import rearrange, reduce, repeat
+from einops import rearrange, repeat
 from fancy_einsum import einsum
 
 

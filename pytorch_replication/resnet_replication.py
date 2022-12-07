@@ -9,8 +9,8 @@ import torch.nn as nn
 import torchvision
 from PIL import Image
 
-import arena_utils
-from pytorch_replication import nn_replication
+import pytorch_utils
+import nn_replication
 
 
 #%%
@@ -104,7 +104,7 @@ class ResNet34(nn.Module):
 my_resnet = ResNet34()
 pretrained_resnet = torchvision.models.resnet34(weights="DEFAULT")
 
-arena_utils.print_param_count(my_resnet, pretrained_resnet)
+pytorch_utils.print_param_count(my_resnet, pretrained_resnet)
 # %%
 def copy_weights(my_resnet: ResNet34, pretrained_resnet: torchvision.models.resnet.ResNet) -> ResNet34:
     '''Copy over the weights of `pretrained_resnet` to your resnet.'''

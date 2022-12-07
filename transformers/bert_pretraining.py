@@ -16,9 +16,7 @@ import time
 from typing import List, Tuple
 import wandb
 
-sys.path.append("../")
-import arena_utils
-import utils
+import transformers_utils
 import transformer_replication
 import bert_replication
 import matplotlib.pyplot as plt
@@ -149,7 +147,7 @@ def random_mask(
     return model_input, selection_mask
 
 if MAIN:
-    arena_utils.test_random_mask(random_mask, input_size=10000, max_seq=128)
+    transformers_utils.test_random_mask(random_mask, input_size=10000, max_seq=128)
 # %%
 def calculate_cross_entropy_unigram(data):
     freqs = t.bincount(data.flatten())
@@ -177,7 +175,7 @@ def cross_entropy_selected(pred: t.Tensor, target: t.Tensor, was_selected: t.Ten
     return F.cross_entropy(pred_flat, target_flat)
 
 if MAIN:
-    arena_utils.test_cross_entropy_selected(cross_entropy_selected, verbose=True)
+    transformers_utils.test_cross_entropy_selected(cross_entropy_selected, verbose=True)
 
     batch_size = 8
     seq_length = 512

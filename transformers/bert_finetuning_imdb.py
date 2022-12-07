@@ -18,7 +18,7 @@ from tqdm.notebook import tqdm_notebook
 import bert_replication
 import gpt2_replication
 import transformer_replication
-import utils
+import transformers_utils
 import wandb
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
