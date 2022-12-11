@@ -17,6 +17,7 @@ import pandas as pd
 import numpy as np
 
 import interpretability_utils
+from interpretability_utils import DataSet
 from reference_transformer import ParenTransformer, SimpleTokenizer
 
 MAIN = __name__ == "__main__"
@@ -36,7 +37,7 @@ if MAIN:
 
     N_SAMPLES = 5000
     data_tuples = data_tuples[:N_SAMPLES]
-    data = interpretability_utils.DataSet(data_tuples)
+    data = DataSet(data_tuples)
     
     fig = px.histogram([len(x[0]) for x in data])
     fig.show()
@@ -85,4 +86,68 @@ if MAIN:
 # %%
 def get_post_final_ln_dir(model: ParenTransformer) -> t.Tensor:
     return model.decoder.weight[0] - model.decoder.weight[1]
+# %%
+def get_inputs(model: ParenTransformer, data: DataSet, module: nn.Module) -> t.Tensor:
+    '''
+    Get the inputs to a particular submodule of the model when run on the data.
+    Returns a tensor of size (data_pts, seq_pos, emb_size).
+    '''
+    inputs = []
+    def fn(module, input, output):
+        inputs.append(input[0])
+        return None
+    handle = module.register_forward_hook(fn)
+    run_model_on_data(model, data)
+    handle.remove()
+    return t.concat(inputs).detach()
+
+def get_outputs(model: ParenTransformer, data: DataSet, module: nn.Module) -> t.Tensor:
+    '''
+    Get the outputs from a particular submodule of the model when run on the data.
+    Returns a tensor of size (data_pts, seq_pos, emb_size).
+    '''
+    outputs = []
+    def fn(module, input, output):
+        outputs.append(output)
+        return None
+    handle = module.register_forward_hook(fn)
+    run_model_on_data(model, data)
+    handle.remove()
+    return t.concat(outputs).detach()
+
+if MAIN:
+    interpretability_utils.test_get_inputs(get_inputs, model, data)
+    interpretability_utils.test_get_outputs(get_outputs, model, data)
+# %%
+def get_ln_fit(
+    model: ParenTransformer, data: DataSet, ln_module: nn.LayerNorm, seq_pos: Union[None, int]
+) -> Tuple[LinearRegression, t.Tensor]:
+    '''
+    if seq_pos is None, find best fit for all sequence positions. Otherwise, fit only for given seq_pos.
+
+    Returns: A tuple of a (fitted) sklearn LinearRegression object and a dimensionless tensor containing the r^2 of the fit (hint: wrap a value in torch.tensor() to make a dimensionless tensor)
+    '''
+    inputs = get_inputs(model, data, ln_module)
+    outputs = get_outputs(model, data, ln_module)
+    if seq_pos is not None:
+        inputs = inputs[:, seq_pos, :].squeeze()
+        outputs = outputs[:, seq_pos, :].squeeze()
+    else:
+        inputs = rearrange(inputs, "batch seq emb -> batch (seq emb)")
+        outputs = rearrange(outputs, "batch seq emb -> batch (seq emb)")
+    regr = LinearRegression()
+    regr.fit(inputs, outputs)
+    return regr, t.tensor(regr.score(inputs, outputs))
+
+if MAIN:
+    (final_ln_fit, r2) = get_ln_fit(model, data, model.norm, seq_pos=0)
+    print("r^2: ", r2)
+    interpretability_utils.test_final_ln_fit(model, data, get_ln_fit)
+# %%
+def get_pre_final_ln_dir(model: ParenTransformer, data: DataSet) -> t.Tensor:
+    regr, _ = get_ln_fit(model, data, model.norm, seq_pos=0)
+    return t.matmul(get_post_final_ln_dir(model), t.tensor(regr.coef_))
+
+if MAIN:
+    interpretability_utils.test_pre_final_ln_dir(model, data, get_pre_final_ln_dir)
 # %%

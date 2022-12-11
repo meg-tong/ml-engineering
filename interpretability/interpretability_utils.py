@@ -254,86 +254,86 @@ def qk_calc_termwise(
     scores = einsum("x o, y o -> x y", qs, ks)
     return scores.squeeze()
 
-def test_get_inputs(get_inputs, model, data):
+def test_get_inputs(get_inputs_to_test, model, data):
 
     module = model.layers[1].linear2
 
     expected = get_inputs(model, data, module)
-    actual = get_inputs(model, data, module)
+    actual = get_inputs_to_test(model, data, module)
 
     t.testing.assert_close(actual, expected)
     print("All tests in `test_get_inputs` passed.")
 
-def test_get_outputs(get_outputs, model, data):
+def test_get_outputs(get_outputs_to_test, model, data):
 
     module = model.layers[1].linear2
 
     expected = get_outputs(model, data, module)
-    actual = get_outputs(model, data, module)
+    actual = get_outputs_to_test(model, data, module)
 
     t.testing.assert_close(actual, expected)
     print("All tests in `test_get_outputs` passed.")
 
-def test_get_out_by_head(get_out_by_head, model, data):
+def test_get_out_by_head(get_out_by_head_to_test, model, data):
 
     layer = 2
 
     expected = get_out_by_head(model, data, layer)
-    actual = get_out_by_head(model, data, layer)
+    actual = get_out_by_head_to_test(model, data, layer)
 
     t.testing.assert_close(actual, expected)
     print("All tests in `test_get_out_by_head` passed.")
 
-def test_get_out_by_component(get_out_by_components, model, data):
+def test_get_out_by_component(get_out_by_components_to_test, model, data):
 
     expected = get_out_by_components(model, data)
-    actual = get_out_by_components(model, data)
+    actual = get_out_by_components_to_test(model, data)
 
     t.testing.assert_close(actual, expected)
     print("All tests in `test_get_out_by_component` passed.")
 
-def test_final_ln_fit(model, data, get_ln_fit):
+def test_final_ln_fit(model, data, get_ln_fit_to_test):
 
     expected, exp_r2 = get_ln_fit(model, data, model.norm, 0)
-    actual, act_r2 = get_ln_fit(model, data, model.norm, 0)
+    actual, act_r2 = get_ln_fit_to_test(model, data, model.norm, 0)
 
     t.testing.assert_close(t.tensor(actual.coef_), t.tensor(expected.coef_))
     t.testing.assert_close(t.tensor(actual.intercept_), t.tensor(expected.intercept_))
     t.testing.assert_close(act_r2, exp_r2)
     print("All tests in `test_final_ln_fit` passed.")
 
-def test_pre_final_ln_dir(model, data, get_pre_final_ln_dir):
+def test_pre_final_ln_dir(model, data, get_pre_final_ln_dir_to_test):
 
     expected = get_pre_final_ln_dir(model, data)
-    actual = get_pre_final_ln_dir(model, data)
+    actual = get_pre_final_ln_dir_to_test(model, data)
     similarity = t.nn.functional.cosine_similarity(actual, expected, dim=0).item()
     t.testing.assert_close(similarity, 1.0)
     print("All tests in `test_pre_final_ln_dir` passed.")
 
-def test_get_WV(model, get_WV):
+def test_get_WV(model, get_WV_to_test):
 
     indices = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
 
     for layer, head in indices:
         v = get_WV(model, layer, head)
-        their_v = get_WV(model, layer, head)
+        their_v = get_WV_to_test(model, layer, head)
         t.testing.assert_close(their_v, v)
     print("All tests in `test_get_WV` passed.")
 
-def test_get_WO(model, get_WO):
+def test_get_WO(model, get_WO_to_test):
 
     indices = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
 
     for layer, head in indices:
         o = get_WO(model, layer, head)
-        their_o = get_WO(model, layer, head)
+        their_o = get_WO_to_test(model, layer, head)
         t.testing.assert_close(their_o, o)
     print("All tests in `test_get_WO` passed.")
 
-def test_get_pre_20_dir(model, data, get_pre_20_dir):
+def test_get_pre_20_dir(model, data, get_pre_20_dir_to_test):
 
     expected = get_pre_20_dir(model, data)
-    actual = get_pre_20_dir(model, data)
+    actual = get_pre_20_dir_to_test(model, data)
     
     t.testing.assert_close(actual, expected)
     print("All tests in `test_get_pre_20_dir` passed.")
