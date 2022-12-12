@@ -151,3 +151,14 @@ def get_pre_final_ln_dir(model: ParenTransformer, data: DataSet) -> t.Tensor:
 if MAIN:
     interpretability_utils.test_pre_final_ln_dir(model, data, get_pre_final_ln_dir)
 # %%
+if MAIN:
+    print("Update the examples list below below find adversarial examples")
+    examples = [
+        "(" * 20 + ")" * 18 + "(" + ")" * 3,
+        "(" * 10 + ")" * 10 + ")(" + "(" * 10 + ")" * 10]
+    m = max(len(ex) for ex in examples)
+    toks = tokenizer.tokenize(examples).to(DEVICE)
+    out = model(toks)
+    print("\n".join([f"{ex:{m}} -> {p:.2%} balanced confidence" for (ex, p) in zip(examples, out.exp()[:, 1])]))
+
+# %%
